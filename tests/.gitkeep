@@ -1,0 +1,2 @@
+# Placeholder — cross-app integration tests land here.
+# Per-app unit tests live in apps/<app>/tests/.

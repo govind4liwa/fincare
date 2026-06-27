@@ -1,0 +1,6 @@
+-r base.txt
+
+# Production-only extras
+whitenoise==6.7.0           # static file serving (fallback)
+django-redis==5.4.0         # redis cache backend
+psycopg-pool==3.2.2         # connection pooling

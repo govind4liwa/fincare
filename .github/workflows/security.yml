@@ -1,0 +1,90 @@
+name: Security
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: "0 3 * * 1"   # weekly Mondays 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: read
+
+jobs:
+  # ----------------------------------------------------------
+  # Bandit — Python static security analysis
+  # ----------------------------------------------------------
+  bandit:
+    name: Bandit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Bandit
+        run: pip install "bandit[toml]==1.7.9"
+
+      - name: Run Bandit
+        run: |
+          if [ -d apps ] && [ "$(ls -A apps)" ]; then
+            bandit -c pyproject.toml -r apps -f txt
+          else
+            echo "Skipping Bandit — apps/ not yet populated."
+          fi
+
+  # ----------------------------------------------------------
+  # Safety — known-vulnerability check on pinned deps
+  # ----------------------------------------------------------
+  safety:
+    name: Safety
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Safety
+        run: pip install "safety==3.2.0"
+
+      - name: Run Safety
+        continue-on-error: true   # non-blocking warnings (Phase 1.0)
+        run: safety check --file requirements/prod.txt --short-report
+
+  # ----------------------------------------------------------
+  # Dependency Review — block PRs introducing vulnerable deps
+  # ----------------------------------------------------------
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  # ----------------------------------------------------------
+  # Gitleaks — secret scan
+  # ----------------------------------------------------------
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,85 @@
+name: Feature Request
+description: Propose a new feature or enhancement
+title: "[FEAT] "
+labels: ["enhancement", "triage"]
+assignees:
+  - govind4liwa
+body:
+  - type: input
+    id: module
+    attributes:
+      label: Target Module
+      placeholder: e.g. fleet, payroll, reports
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this solve? Who experiences it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Bullet list — when is this "done"?
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 — Blocker
+        - P1 — High
+        - P2 — Medium
+        - P3 — Nice to have
+    validations:
+      required: true
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Feature Type
+      options:
+        - Accounting logic
+        - Reporting
+        - UI / UX
+        - API
+        - Integration
+        - Performance
+        - Compliance (UAE FTA / Corporate Tax / WPS)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: posting
+    attributes:
+      label: Posting Logic (if accounting feature)
+      description: Specify debit/credit accounts and triggers
+      render: markdown
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context

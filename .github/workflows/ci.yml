@@ -1,0 +1,217 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, "release/**"]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  POSTGRES_DB: fincare_test
+  POSTGRES_USER: fincare
+  POSTGRES_PASSWORD: fincare_ci_password
+
+jobs:
+  # ----------------------------------------------------------
+  # Lint — ruff, black, isort
+  # ----------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: requirements/dev.txt
+
+      - name: Install dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Black
+        run: black --check .
+
+      - name: isort
+        run: isort --check-only .
+
+  # ----------------------------------------------------------
+  # Type check — mypy
+  # ----------------------------------------------------------
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: requirements/dev.txt
+
+      - name: Install dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: mypy
+        run: |
+          if [ -d apps ] && [ "$(ls -A apps)" ]; then
+            mypy apps
+          else
+            echo "Skipping mypy — apps/ not yet populated."
+          fi
+
+  # ----------------------------------------------------------
+  # Tests — pytest with Postgres service
+  # ----------------------------------------------------------
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        options: >-
+          --health-cmd "pg_isready -U fincare -d fincare_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 3s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    env:
+      DATABASE_URL: postgres://fincare:fincare_ci_password@localhost:5432/fincare_test
+      REDIS_URL: redis://localhost:6379/0
+      DJANGO_SETTINGS_MODULE: fincare.settings.test
+      DJANGO_SECRET_KEY: ci-test-secret-key-do-not-use-in-prod-1234567890
+      DJANGO_DEBUG: "False"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: requirements/dev.txt
+
+      - name: Install dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: Run pytest
+        run: |
+          if [ -d apps ] && [ "$(ls -A apps)" ]; then
+            pytest --cov=apps --cov-report=xml --cov-report=term-missing
+          else
+            echo "Skipping pytest — apps/ not yet populated."
+            mkdir -p coverage && echo '<?xml version="1.0"?><coverage></coverage>' > coverage.xml
+          fi
+
+      - name: Upload coverage
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 7
+
+  # ----------------------------------------------------------
+  # Migration check — no model drift
+  # ----------------------------------------------------------
+  migrations:
+    name: Migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        options: >-
+          --health-cmd "pg_isready -U fincare -d fincare_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgres://fincare:fincare_ci_password@localhost:5432/fincare_test
+      DJANGO_SETTINGS_MODULE: fincare.settings.test
+      DJANGO_SECRET_KEY: ci-migration-secret-key-1234567890
+      DJANGO_DEBUG: "False"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: requirements/dev.txt
+
+      - name: Install dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: Check for missing migrations
+        run: |
+          if [ -f manage.py ]; then
+            python manage.py makemigrations --check --dry-run
+          else
+            echo "Skipping makemigrations check — manage.py not yet created."
+          fi
+
+  # ----------------------------------------------------------
+  # Docker build — verify Dockerfile
+  # ----------------------------------------------------------
+  build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: runtime
+          push: false
+          load: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: fincare:ci-${{ github.sha }}

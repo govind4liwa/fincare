@@ -1,0 +1,35 @@
+# ============================================================
+# CODEOWNERS — FinCare
+# Patterns are matched in order; LAST match wins.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+# ============================================================
+
+# Default owner — everything not matched below
+*                                       @govind4liwa
+
+# --- Infrastructure & CI ---
+.github/                                @govind4liwa
+.github/workflows/                      @govind4liwa
+docker-compose.yml                      @govind4liwa
+Dockerfile                              @govind4liwa
+Makefile                                @govind4liwa
+requirements/                           @govind4liwa
+pyproject.toml                          @govind4liwa
+
+# --- Documentation ---
+README.md                               @govind4liwa
+docs/                                   @govind4liwa
+docs/adr/                               @govind4liwa
+
+# --- Accounting core (require extra care) ---
+apps/ledger/                            @govind4liwa
+apps/accounts/                          @govind4liwa
+apps/vouchers/                          @govind4liwa
+apps/tax/                               @govind4liwa
+apps/audit/                             @govind4liwa
+
+# --- Multi-tenancy & security ---
+apps/tenants/                           @govind4liwa
+apps/users/                             @govind4liwa
+SECURITY.md                             @govind4liwa
+LICENSE                                 @govind4liwa

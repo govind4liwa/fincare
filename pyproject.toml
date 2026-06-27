@@ -1,0 +1,157 @@
+[project]
+name = "fincare"
+version = "0.1.0"
+description = "Professional bookkeeping & accounting system for UAE SMEs and multi-entity groups."
+authors = [{ name = "Govind", email = "govind4liwa@yahoo.com" }]
+readme = "README.md"
+license = { text = "Proprietary" }
+requires-python = ">=3.12"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# ============================================================
+# Ruff — fast linter (replaces flake8, pyupgrade, etc.)
+# ============================================================
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    "migrations",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "node_modules",
+    "staticfiles",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "DJ",    # flake8-django
+    "UP",    # pyupgrade
+    "N",     # pep8-naming
+    "S",     # flake8-bandit
+    "SIM",   # flake8-simplify
+    "RUF",   # ruff-specific
+]
+ignore = [
+    "E501",  # line-too-long (black handles this)
+    "S101",  # assert allowed in tests
+    "DJ001", # null=True on CharField — sometimes needed for nullable
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106"]
+"**/migrations/*.py" = ["E501", "N806"]
+"**/settings/*.py" = ["S105", "S106"]
+
+# ============================================================
+# Black — code formatter
+# ============================================================
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+extend-exclude = '''
+/(
+    migrations
+  | \.venv
+  | venv
+  | build
+  | dist
+)/
+'''
+
+# ============================================================
+# isort — import sorter
+# ============================================================
+[tool.isort]
+profile = "black"
+line_length = 100
+known_django = ["django"]
+known_drf = ["rest_framework"]
+sections = ["FUTURE", "STDLIB", "DJANGO", "DRF", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+skip = ["migrations", ".venv", "venv", "build", "dist"]
+
+# ============================================================
+# mypy — static type checker
+# ============================================================
+[tool.mypy]
+python_version = "3.12"
+strict = false
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_unreachable = true
+disallow_untyped_defs = false
+disallow_any_generics = false
+ignore_missing_imports = true
+exclude = ["migrations/", "tests/", "build/", "dist/", ".venv/"]
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+
+[tool.django-stubs]
+django_settings_module = "fincare.settings.dev"
+
+# ============================================================
+# pytest
+# ============================================================
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "fincare.settings.test"
+python_files = ["test_*.py", "*_test.py", "tests.py"]
+addopts = [
+    "--strict-markers",
+    "--tb=short",
+    "--reuse-db",
+    "--cov-config=pyproject.toml",
+]
+markers = [
+    "unit: fast unit tests",
+    "integration: integration tests (require DB)",
+    "slow: slow tests (skip in dev loop)",
+    "posting: accounting posting engine tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+# ============================================================
+# Coverage
+# ============================================================
+[tool.coverage.run]
+source = ["apps"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/settings/*",
+    "*/wsgi.py",
+    "*/asgi.py",
+    "manage.py",
+]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+
+# ============================================================
+# Bandit — security
+# ============================================================
+[tool.bandit]
+exclude_dirs = ["tests", "migrations", ".venv", "venv"]
+skips = ["B101", "B601"]

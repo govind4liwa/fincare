@@ -1,0 +1,3 @@
+# Placeholder — operational scripts land here.
+# Existing: bootstrap.ps1, bootstrap.sh
+# Coming:   seed_coa.py, seed_tax.py, seed_demo.py, migrate_coa.py

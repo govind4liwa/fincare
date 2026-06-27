@@ -1,0 +1,4 @@
+# Placeholder — Django apps land here from Phase 1.0 onward.
+# Will hold: core, users, tenants, accounts, ledger, vouchers,
+# ar, ap, banking, cashbook, tax, fleet, drivers, bookings,
+# platforms, payroll, reports, exports, audit, integrations.
