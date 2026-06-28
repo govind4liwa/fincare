@@ -1,5 +1,5 @@
 # ============================================================
-# FinCare — Windows Bootstrap
+# FinCare - Windows Bootstrap
 # Run from repo root: .\scripts\bootstrap.ps1
 # ============================================================
 
@@ -42,7 +42,7 @@ if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
     Write-Host "    Edit .env with your local values (especially DJANGO_SECRET_KEY)" -ForegroundColor Yellow
 } else {
-    Write-Host "==> .env already exists — skipping" -ForegroundColor Yellow
+    Write-Host "==> .env already exists - skipping" -ForegroundColor Yellow
 }
 
 # --- 4. Create Python venv ---
