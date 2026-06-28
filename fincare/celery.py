@@ -1,4 +1,5 @@
 """Celery application for FinCare."""
+
 import os
 
 from celery import Celery

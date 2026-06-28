@@ -1,15 +1,18 @@
 """Core app — system endpoints."""
+
 from __future__ import annotations
 
 import django
 from django.conf import settings
 from django.db import connection
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
+
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 
 
 @extend_schema(
@@ -55,7 +58,7 @@ def readiness(request: Request) -> Response:
             cursor.execute("SELECT 1")
             cursor.fetchone()
         checks["database"] = "ok"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         overall_ok = False
         checks["database"] = f"error: {exc.__class__.__name__}"
 
@@ -69,7 +72,7 @@ def readiness(request: Request) -> Response:
         else:
             overall_ok = False
             checks["cache"] = "error: roundtrip mismatch"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         overall_ok = False
         checks["cache"] = f"error: {exc.__class__.__name__}"
 
@@ -78,7 +81,9 @@ def readiness(request: Request) -> Response:
         "service": "fincare",
         "version": "0.1.0",
         "checks": checks,
-        "environment": settings.SETTINGS_MODULE if hasattr(settings, "SETTINGS_MODULE") else "unknown",
+        "environment": (
+            settings.SETTINGS_MODULE if hasattr(settings, "SETTINGS_MODULE") else "unknown"
+        ),
     }
     http_status = status.HTTP_200_OK if overall_ok else status.HTTP_503_SERVICE_UNAVAILABLE
     return Response(payload, status=http_status)

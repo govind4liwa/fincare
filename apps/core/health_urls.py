@@ -2,6 +2,7 @@
 
 Used by the Docker HEALTHCHECK and external load-balancer probes.
 """
+
 from django.urls import path
 
 from . import views

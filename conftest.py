@@ -1,4 +1,5 @@
 """Top-level pytest configuration."""
+
 import os
 
 # pytest-django reads DJANGO_SETTINGS_MODULE; also set in pyproject.toml

@@ -77,3 +77,14 @@ CMD ["gunicorn", "fincare.wsgi:application", \
      "--timeout", "60", \
      "--access-logfile", "-", \
      "--error-logfile", "-"]
+
+# --- Stage 3: Dev (local development image) ---
+# Extends runtime with dev/test/profiling tooling (pytest, ruff, debug_toolbar,
+# silk, etc.) so DJANGO_SETTINGS_MODULE=fincare.settings.dev can import its apps.
+# Used by docker compose for local dev only; production uses the runtime stage.
+FROM runtime AS dev
+
+USER root
+RUN pip install --no-cache-dir -r requirements/dev.txt
+ENV DJANGO_SETTINGS_MODULE=fincare.settings.dev
+USER fincare

@@ -42,7 +42,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: runtime
+      target: dev
     container_name: fincare-web
     restart: unless-stopped
     command: >
@@ -68,7 +68,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: runtime
+      target: dev
     container_name: fincare-celery-worker
     restart: unless-stopped
     command: celery -A fincare worker --loglevel=info --concurrency=2
@@ -88,7 +88,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: runtime
+      target: dev
     container_name: fincare-celery-beat
     restart: unless-stopped
     command: celery -A fincare beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler

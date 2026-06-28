@@ -1,14 +1,17 @@
 """FinCare — pytest / CI test settings."""
+
 import os
 
 # Ensure a working SECRET_KEY exists before importing base
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-only-secret-key-do-not-use-in-prod-1234567890")
 os.environ.setdefault("DJANGO_DEBUG", "False")
-os.environ.setdefault("DATABASE_URL", "postgres://fincare:fincare_ci_password@localhost:5432/fincare_test")
+os.environ.setdefault(
+    "DATABASE_URL", "postgres://fincare:fincare_ci_password@localhost:5432/fincare_test"
+)
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("CELERY_BROKER_URL", "redis://localhost:6379/1")
 
-from .base import *  # noqa: F401,F403,E402
+from .base import *  # noqa: F403
 
 DEBUG = False
 

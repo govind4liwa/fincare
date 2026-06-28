@@ -1,9 +1,9 @@
 """Tests for the core health endpoints."""
-import pytest
-from django.urls import reverse
+
 from rest_framework import status
 from rest_framework.test import APIClient
 
+import pytest
 
 pytestmark = pytest.mark.django_db
 

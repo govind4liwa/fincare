@@ -1,4 +1,5 @@
 """Core app URLs mounted under /api/v1/core/."""
+
 from django.urls import path
 
 from . import views
