@@ -1,26 +1,22 @@
-"""FinCare — local development settings."""
+"""FinCare - local development settings."""
 from .base import *  # noqa: F401,F403
-from .base import INSTALLED_APPS, MIDDLEWARE
 
 DEBUG = True
 
-# Console-printable secret OK in dev only
-INSTALLED_APPS = INSTALLED_APPS + [
+# INSTALLED_APPS and MIDDLEWARE come from the star import above
+INSTALLED_APPS = list(INSTALLED_APPS) + [  # noqa: F405
     "debug_toolbar",
     "silk",
 ]
 
 MIDDLEWARE = (
     ["debug_toolbar.middleware.DebugToolbarMiddleware"]
-    + MIDDLEWARE
+    + list(MIDDLEWARE)  # noqa: F405
     + ["silk.middleware.SilkyMiddleware"]
 )
 
 INTERNAL_IPS = ["127.0.0.1", "localhost"]
 
-# Don't enforce strict CSRF in dev
+# Dev cookies served over HTTP - never enable secure in dev
 CSRF_COOKIE_SECURE = False
 SESSION_COOKIE_SECURE = False
-
-# More verbose SQL logs in dev when LOG_LEVEL=DEBUG
-LOGGING_DEV_DB_LEVEL = "DEBUG" if DEBUG else "WARNING"

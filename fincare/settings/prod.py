@@ -1,15 +1,14 @@
-"""FinCare — production settings."""
+"""FinCare - production settings."""
 from .base import *  # noqa: F401,F403
-from .base import env
 
 DEBUG = False
 
 # ---------------------------------------------------------------------------
 # Security hardening
 # ---------------------------------------------------------------------------
-SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)  # noqa: F405
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SECURE_HSTS_SECONDS = 60 * 60 * 24 * 365      # 1 year
+SECURE_HSTS_SECONDS = 60 * 60 * 24 * 365  # 1 year
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
@@ -27,7 +26,7 @@ CSRF_COOKIE_SAMESITE = "Lax"
 # ---------------------------------------------------------------------------
 STORAGES = {
     "default": {
-        "BACKEND": env(
+        "BACKEND": env(  # noqa: F405
             "DEFAULT_FILE_STORAGE",
             default="django.core.files.storage.FileSystemStorage",
         ),
@@ -37,16 +36,14 @@ STORAGES = {
     },
 }
 
-# Insert WhiteNoise just after SecurityMiddleware
-from .base import MIDDLEWARE  # noqa: E402
-
-if "whitenoise.middleware.WhiteNoiseMiddleware" not in MIDDLEWARE:
-    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
+# Insert WhiteNoise just after SecurityMiddleware (MIDDLEWARE is a list from star import)
+if "whitenoise.middleware.WhiteNoiseMiddleware" not in MIDDLEWARE:  # noqa: F405
+    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")  # noqa: F405
 
 # ---------------------------------------------------------------------------
 # Sentry
 # ---------------------------------------------------------------------------
-SENTRY_DSN = env("SENTRY_DSN", default="")
+SENTRY_DSN = env("SENTRY_DSN", default="")  # noqa: F405
 if SENTRY_DSN:
     import sentry_sdk
     from sentry_sdk.integrations.celery import CeleryIntegration
@@ -58,8 +55,8 @@ if SENTRY_DSN:
         integrations=[DjangoIntegration(), CeleryIntegration(), RedisIntegration()],
         traces_sample_rate=0.1,
         send_default_pii=False,
-        environment=env("ENVIRONMENT", default="production"),
-        release=env("RELEASE_VERSION", default="unknown"),
+        environment=env("ENVIRONMENT", default="production"),  # noqa: F405
+        release=env("RELEASE_VERSION", default="unknown"),  # noqa: F405
     )
 
 # ---------------------------------------------------------------------------
@@ -68,7 +65,7 @@ if SENTRY_DSN:
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": env("REDIS_URL"),
+        "LOCATION": env("REDIS_URL"),  # noqa: F405
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "CONNECTION_POOL_KWARGS": {"max_connections": 100},
