@@ -73,8 +73,8 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     "apps.core",
+    "apps.users",
     # Future Phase 1 apps:
-    # "apps.users",
     # "apps.tenants",
     # "apps.audit",
     # "apps.accounts",
@@ -167,7 +167,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# AUTH_USER_MODEL = "users.User"  # uncomment when apps.users is added
+AUTH_USER_MODEL = "users.User"
 
 # ---------------------------------------------------------------------------
 # Internationalization & Localization (UAE defaults)
