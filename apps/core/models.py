@@ -4,12 +4,14 @@ Conventions (CLAUDE.md §4, design doc 01):
 - UUID primary keys, audit fields, soft delete on every persistent model.
 - Money uses Decimal; rates use 6 decimal places.
 
-Forward-dependency notes (resolved for Phase 1 — see BUILD_ROADMAP):
-- ``created_by`` / ``updated_by`` reference ``settings.AUTH_USER_MODEL`` (today
-  the default ``auth.User``; swaps to ``apps.users`` in Phase 2).
-- ``NumberSequence.entity_id`` / ``Attachment.entity_id`` are plain UUID scope
-  keys, NOT FKs, because ``core`` must not depend on ``tenants`` (which depends
-  on ``core``). Phase 3 promotes them to FKs → ``tenants.Entity``.
+Forward-dependency strategy (see ADR-0009):
+- ``created_by`` / ``updated_by`` reference ``settings.AUTH_USER_MODEL`` (set to
+  ``users.User`` in Phase 2), so core never imports the user app.
+- ``NumberSequence.entity_id`` / ``Attachment.entity_id`` are intentionally plain
+  UUID scope keys, NOT FKs, so ``core`` stays at the root of the dependency graph
+  (it must not depend on ``tenants``, which depends on ``core``). Tenant isolation
+  is enforced by RLS on the ``entity_id`` column (ADR-0008); referential validity
+  is a service-layer responsibility. This is final, not a pending promotion.
 """
 
 import uuid
@@ -117,7 +119,7 @@ class ExchangeRate(BaseModel):
 class NumberSequence(BaseModel):
     """Gap-safe document numbering, scoped per entity + series + period.
 
-    ``entity_id`` is a UUID scope key (FK to tenants.Entity added in Phase 3).
+    ``entity_id`` is a UUID scope key (not a FK — see ADR-0009).
     Allocation goes through ``apps.core.services.sequences``.
     """
 
@@ -156,7 +158,7 @@ class NumberSequence(BaseModel):
 class Attachment(BaseModel):
     """Generic file attachment for any document.
 
-    ``entity_id`` is a UUID scope key (FK to tenants.Entity added in Phase 3).
+    ``entity_id`` is a UUID scope key (not a FK — see ADR-0009).
     """
 
     entity_id = models.UUIDField(db_index=True)

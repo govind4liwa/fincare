@@ -74,8 +74,9 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "apps.core",
     "apps.users",
+    "apps.tenants",
+    "apps.settings",
     # Future Phase 1 apps:
-    # "apps.tenants",
     # "apps.audit",
     # "apps.accounts",
     # "apps.ledger",
@@ -107,9 +108,15 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.tenants.middleware.TenantContextMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+# Row-Level Security (ADR-0008). Disabled by default; enable once a restricted
+# DB role is in place and verified. When False, TenantContextMiddleware no-ops.
+RLS_ENABLED = env.bool("RLS_ENABLED", default=False)
+RLS_APP_ROLE = env("RLS_APP_ROLE", default="fincare_app")
 
 ROOT_URLCONF = "fincare.urls"
 WSGI_APPLICATION = "fincare.wsgi.application"
