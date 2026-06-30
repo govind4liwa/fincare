@@ -82,16 +82,10 @@ LOCAL_APPS = [
     "apps.vouchers",
     "apps.ar",
     "apps.ap",
-    # Future Phase 1 apps:
-    # "apps.audit",
-    # "apps.accounts",
-    # "apps.ledger",
-    # "apps.vouchers",
-    # "apps.ar",
-    # "apps.ap",
+    "apps.tax",
+    # Future phase apps:
     # "apps.banking",
     # "apps.cashbook",
-    # "apps.tax",
     # "apps.fleet",
     # "apps.drivers",
     # "apps.bookings",
