@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+
 from django.db.utils import IntegrityError
 
 from apps.tax.models import TaxReturn, TaxReturnStatus
