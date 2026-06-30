@@ -92,8 +92,7 @@ LOCAL_APPS = [
     "apps.payroll",
     "apps.reports",
     "apps.exports",
-    # Future phase apps:
-    # "apps.integrations",
+    "apps.integrations",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
