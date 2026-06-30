@@ -85,8 +85,9 @@ LOCAL_APPS = [
     "apps.tax",
     "apps.banking",
     "apps.cashbook",
+    "apps.fleet",
+    "apps.drivers",
     # Future phase apps:
-    # "apps.fleet",
     # "apps.drivers",
     # "apps.bookings",
     # "apps.platforms",
