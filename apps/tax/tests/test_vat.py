@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from django.db.utils import IntegrityError
 
 from apps.tax.models import TaxReturn, TaxReturnStatus
 from apps.tax.services.vat import TaxError, compute_vat_return, file_vat_return
@@ -97,5 +98,5 @@ def test_out_of_period_movements_excluded(vat_group, post_sale):
 
 
 def test_scope_requires_group_or_entity(db):
-    with pytest.raises(Exception):  # CheckConstraint at DB level
+    with pytest.raises(IntegrityError):  # tax_return_scope_required CheckConstraint
         TaxReturn.objects.create(period_start=START, period_end=END)

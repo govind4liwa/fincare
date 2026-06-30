@@ -108,9 +108,8 @@ def compute_vat_return(tax_return: TaxReturn, *, user=None) -> TaxReturn:
     # hard-delete (not soft) to keep the unique (return, box_code) slot free.
     tax_return.boxes.all().hard_delete()
     boxes = []
-    order = 0
     split = _emirate_split(entity_ids, start, end)
-    for box_code, name in EMIRATES:
+    for order, (box_code, name) in enumerate(EMIRATES):
         b = split[name]
         boxes.append(
             TaxReturnBox(
@@ -123,7 +122,6 @@ def compute_vat_return(tax_return: TaxReturn, *, user=None) -> TaxReturn:
                 sort_order=order,
             )
         )
-        order += 1
     boxes.append(
         TaxReturnBox(
             tax_return=tax_return,
