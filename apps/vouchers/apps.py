@@ -1,0 +1,8 @@
+from django.apps import AppConfig
+
+
+class VouchersConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.vouchers"
+    label = "vouchers"
+    verbose_name = "Vouchers"

@@ -152,14 +152,24 @@ class Department(BaseModel):
 
 
 class IntercompanyMap(BaseModel):
-    """Pairs two entities for intercompany recharge / settlement.
-
-    The due-to / due-from account links (→ ``accounts.Account``) are added in
-    Phase 5 when the ``accounts`` app exists.
-    """
+    """Pairs two entities for intercompany recharge / settlement."""
 
     from_entity = models.ForeignKey(Entity, on_delete=models.PROTECT, related_name="ic_from")
     to_entity = models.ForeignKey(Entity, on_delete=models.PROTECT, related_name="ic_to")
+    due_to_account = models.ForeignKey(
+        "accounts.Account",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    due_from_account = models.ForeignKey(
+        "accounts.Account",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
