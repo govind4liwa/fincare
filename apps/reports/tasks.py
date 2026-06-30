@@ -1,7 +1,8 @@
 """Celery tasks for scheduled report generation (design doc 05)."""
 
-from celery import shared_task
 from django.utils import timezone
+
+from celery import shared_task
 
 from apps.ledger.models import AccountingPeriod
 from apps.reports.models import ReportRun, ReportSchedule

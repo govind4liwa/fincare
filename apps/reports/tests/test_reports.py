@@ -9,15 +9,7 @@ from apps.reports.services.catalog import trial_balance_table
 from apps.reports.services.consolidation import consolidated_trial_balance
 from apps.reports.services.statements import balance_sheet, profit_and_loss
 from apps.reports.services.templates import seed_statement_templates
-from apps.reports.tests.conftest import (
-    BANK,
-    CAPITAL,
-    DUE_FROM,
-    DUE_TO,
-    EXPENSE,
-    REVENUE,
-    acct,
-)
+from apps.reports.tests.conftest import BANK, CAPITAL, DUE_FROM, DUE_TO, EXPENSE, REVENUE, acct
 from apps.tenants.models import IntercompanyMap
 
 pytestmark = pytest.mark.django_db

@@ -2,12 +2,7 @@
 
 from django.contrib import admin
 
-from apps.reports.models import (
-    ReportRun,
-    ReportSchedule,
-    StatementLine,
-    StatementTemplate,
-)
+from apps.reports.models import ReportRun, ReportSchedule, StatementLine, StatementTemplate
 
 
 class StatementLineInline(admin.TabularInline):
