@@ -76,6 +76,11 @@ LOCAL_APPS = [
     "apps.users",
     "apps.tenants",
     "apps.settings",
+    "apps.audit",
+    "apps.accounts",
+    "apps.ledger",
+    "apps.vouchers",
+    "apps.ar",
     # Future Phase 1 apps:
     # "apps.audit",
     # "apps.accounts",
