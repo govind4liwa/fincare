@@ -13,6 +13,7 @@ api_v1_patterns = [
     path("auth/token/verify/", TokenVerifyView.as_view(), name="token_verify"),
     path("core/", include("apps.core.urls")),
     path("", include("apps.vouchers.urls")),  # /api/v1/vouchers/
+    path("reports/", include("apps.reports.urls")),  # /api/v1/reports/<code>/
     # Future:
     # path("users/", include("apps.users.urls")),
     # path("tenants/", include("apps.tenants.urls")),

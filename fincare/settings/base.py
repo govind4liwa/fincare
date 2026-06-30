@@ -90,9 +90,9 @@ LOCAL_APPS = [
     "apps.platforms",
     "apps.bookings",
     "apps.payroll",
+    "apps.reports",
+    "apps.exports",
     # Future phase apps:
-    # "apps.reports",
-    # "apps.exports",
     # "apps.integrations",
 ]
 
