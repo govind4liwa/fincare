@@ -68,9 +68,7 @@ def test_aggregate_groups_by_vehicle_driver(entity, platform, vehicle, driver):
 
     # net 80 + 160 = 240 clearing; commission 60; revenue 300
     assert entry.total_debit == entry.total_credit == Decimal("300.00")
-    clearing = sum(
-        ln.debit for ln in entry.lines.all() if ln.account.code == PLATFORM_CLEARING
-    )
+    clearing = sum(ln.debit for ln in entry.lines.all() if ln.account.code == PLATFORM_CLEARING)
     assert clearing == Decimal("240.00")
     # two distinct vehicle dims among clearing lines
     veh_ids = {ln.vehicle_id for ln in entry.lines.all() if ln.account.code == PLATFORM_CLEARING}

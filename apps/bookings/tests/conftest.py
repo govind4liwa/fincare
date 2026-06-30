@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 
 from apps.accounts.models import Account, TaxCode
-from apps.accounts.services.seed import seed_entity_coa
+from apps.accounts.services.seed import seed_entity_coa, seed_tax_codes
 from apps.ar.models import Customer
 from apps.bookings.models import Contract
 from apps.core.models import Currency
@@ -37,6 +37,7 @@ def entity(db):
         base_currency=aed,
     )
     seed_entity_coa(ent)
+    seed_tax_codes(ent)
     AccountingPeriod.objects.create(
         entity=ent,
         fiscal_year=2026,

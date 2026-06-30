@@ -13,16 +13,16 @@ pytestmark = pytest.mark.django_db
 
 
 def _settlement(entity, platform, **kw):
-    defaults = dict(
-        entity=entity,
-        platform=platform,
-        period_start=date(2026, 6, 1),
-        period_end=date(2026, 6, 7),
-        settlement_date=date(2026, 6, 8),
-        gross_earnings=Decimal("1000.00"),
-        commission=Decimal("200.00"),
-        net_received=Decimal("800.00"),
-    )
+    defaults = {
+        "entity": entity,
+        "platform": platform,
+        "period_start": date(2026, 6, 1),
+        "period_end": date(2026, 6, 7),
+        "settlement_date": date(2026, 6, 8),
+        "gross_earnings": Decimal("1000.00"),
+        "commission": Decimal("200.00"),
+        "net_received": Decimal("800.00"),
+    }
     defaults.update(kw)
     return PlatformSettlement.objects.create(**defaults)
 

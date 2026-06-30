@@ -50,7 +50,9 @@ class Trip(BaseModel):
     salik = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     tip = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     distance_km = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
-    net_revenue = models.DecimalField(max_digits=18, decimal_places=2, default=0)  # fare - commission
+    net_revenue = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0
+    )  # fare - commission
     status = models.CharField(
         max_length=12, choices=TripStatus.choices, default=TripStatus.RECORDED, db_index=True
     )

@@ -16,7 +16,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.db import transaction
 
 from apps.audit.services import record as audit_record
-from apps.bookings.models import Contract, Trip, TripStatus
+from apps.bookings.models import Contract, TripStatus
 from apps.ledger.models import JournalEntry, JournalLine
 from apps.ledger.services.posting import PostingError, post_journal_entry
 
