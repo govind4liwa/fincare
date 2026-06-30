@@ -29,7 +29,7 @@ def to_decimal(value):
     """Coerce a cell to a 2dp Decimal. Blank -> 0; handles commas and (negatives)."""
     if value is None or value == "":
         return ZERO
-    if isinstance(value, (int, float, Decimal)):
+    if isinstance(value, int | float | Decimal):
         return Decimal(str(value)).quantize(TWO_PLACES)
     text = str(value).strip().replace(",", "").replace("AED", "").replace(" ", "")
     negative = text.startswith("(") and text.endswith(")")
@@ -96,5 +96,5 @@ def read_rows(content, filename, *, skip_rows=0, sheet=""):
     rows = []
     for raw in table[1:]:
         cells = list(raw) + [None] * (len(headers) - len(raw))
-        rows.append(dict(zip(headers, cells)))
+        rows.append(dict(zip(headers, cells, strict=False)))
     return headers, rows
