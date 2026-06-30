@@ -3,9 +3,9 @@
 from datetime import date
 from decimal import Decimal
 
-import pytest
-
 from django.db.utils import IntegrityError
+
+import pytest
 
 from apps.tax.models import TaxReturn, TaxReturnStatus
 from apps.tax.services.vat import TaxError, compute_vat_return, file_vat_return
