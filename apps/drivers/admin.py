@@ -38,6 +38,7 @@ class AdvanceAdmin(admin.ModelAdmin):
         "status",
     )
     list_filter = ("status", "entity")
+    search_fields = ("advance_no", "driver__code", "driver__name")
     date_hierarchy = "advance_date"
     readonly_fields = ("advance_no", "recovered_amount", "balance", "status", "journal_entry")
 
