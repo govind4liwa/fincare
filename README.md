@@ -13,7 +13,7 @@ Built for transportation, limousine, restaurant, workshop, trading, and service 
 | Backend | Python 3.12, Django 5.x, Django REST Framework |
 | Database | PostgreSQL 16 (with Row-Level Security) |
 | Cache / Queue | Redis 7, Celery |
-| Frontend | Next.js 14, Tailwind CSS, shadcn/ui *(Phase 1.6)* |
+| Frontend | Next.js 16+, Tailwind CSS 4, shadcn/ui *(Phase 1.6)* |
 | Auth | JWT (SimpleJWT) |
 | Reporting | openpyxl (Excel), WeasyPrint (PDF) |
 | Deployment | Docker, Docker Compose, Ubuntu VPS |
@@ -39,9 +39,9 @@ docker compose ps
 docker compose logs -f web
 ```
 
-App: http://localhost:8000
-Admin: http://localhost:8000/admin
-API schema: http://localhost:8000/api/schema/swagger/
+App: http://localhost:8005
+Admin: http://localhost:8005/admin
+API schema: http://localhost:8005/api/schema/swagger/
 
 ---
 
