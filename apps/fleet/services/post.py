@@ -136,7 +136,7 @@ def post_depreciation_run(run: DepreciationRun, *, user=None, vehicles=None):
     qs = vehicles if vehicles is not None else run.entity.vehicles.filter(is_active=True)
     rows = []
     total = ZERO
-    run.lines.all().hard_delete()
+    run.lines.all().hard_delete()  # type: ignore[attr-defined]
     for v in qs:
         amount = _q(v.monthly_depreciation)
         if amount <= ZERO:

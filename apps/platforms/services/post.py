@@ -77,7 +77,8 @@ def reconcile(settlement: PlatformSettlement, *, user=None):
 def post_settlement(settlement: PlatformSettlement, *, user=None):
     if settlement.status not in {PlatformDocStatus.DRAFT, PlatformDocStatus.RECONCILED}:
         raise PlatformError(f"Cannot post a settlement in status {settlement.status!r}.")
-    if settlement.bank_account_id is None:
+    bank_account = settlement.bank_account if settlement.bank_account_id else None
+    if bank_account is None:
         raise PlatformError("Settlement requires a bank_account to receive the net.")
 
     gross = _q(settlement.gross_earnings)
@@ -91,7 +92,7 @@ def post_settlement(settlement: PlatformSettlement, *, user=None):
     platform_id = settlement.platform_id
     rows = [
         {
-            "account": settlement.bank_account.gl_account,
+            "account": bank_account.gl_account,
             "debit": net_received,
             "description": "Platform settlement received",
             "platform_id": platform_id,
@@ -127,7 +128,7 @@ def post_settlement(settlement: PlatformSettlement, *, user=None):
         entry_date=settlement.settlement_date,
         source_type="platform_setl",
         source_id=settlement.id,
-        currency=settlement.bank_account.currency or settlement.entity.base_currency,
+        currency=bank_account.currency or settlement.entity.base_currency,
         narration=f"Platform settlement {settlement.platform.name}",
     )
     for line_no, row in enumerate(rows, start=1):

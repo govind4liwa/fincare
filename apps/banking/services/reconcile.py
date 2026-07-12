@@ -43,7 +43,8 @@ def auto_match(
     user=None,
 ):
     """Auto-match statement lines to GL lines. Returns the count of new matches."""
-    if reconciliation.statement_id is None:
+    statement = reconciliation.statement if reconciliation.statement_id else None
+    if statement is None:
         raise ValueError("Reconciliation has no statement to match against.")
 
     bank_gl = reconciliation.bank_account.gl_account
@@ -66,7 +67,7 @@ def auto_match(
 
     used = set()
     matched = 0
-    for sl in reconciliation.statement.lines.filter(is_matched=False).order_by("line_no"):
+    for sl in statement.lines.filter(is_matched=False).order_by("line_no"):
         for jl in candidates:
             if jl.id in used:
                 continue
@@ -100,11 +101,9 @@ def auto_match(
     reconciliation.gl_balance = _gl_balance(
         bank_gl, reconciliation.entity_id, reconciliation.recon_date
     )
-    reconciliation.statement_balance = (
-        reconciliation.statement.closing_balance if reconciliation.statement_id else ZERO
-    )
+    reconciliation.statement_balance = statement.closing_balance
     reconciliation.difference = reconciliation.statement_balance - reconciliation.gl_balance
-    unmatched = reconciliation.statement.lines.filter(is_matched=False).exists()
+    unmatched = statement.lines.filter(is_matched=False).exists()
     reconciliation.status = (
         Reconciliation.Status.IN_PROGRESS if unmatched else Reconciliation.Status.COMPLETED
     )

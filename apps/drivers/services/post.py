@@ -67,7 +67,8 @@ def post_advance(advance: Advance, *, user=None):
     amount = _q(advance.amount)
     if amount <= ZERO:
         raise DriverError("Advance amount must be positive.")
-    if advance.bank_account_id is None:
+    bank_account = advance.bank_account if advance.bank_account_id else None
+    if bank_account is None:
         raise DriverError("Advance requires a bank_account to pay from.")
 
     rows = [
@@ -78,7 +79,7 @@ def post_advance(advance: Advance, *, user=None):
             "driver_id": advance.driver_id,
         },
         {
-            "account": advance.bank_account.gl_account,
+            "account": bank_account.gl_account,
             "credit": amount,
             "description": "Advance paid",
         },
@@ -88,7 +89,7 @@ def post_advance(advance: Advance, *, user=None):
         date=advance.advance_date,
         source_type="driver_advance",
         source_id=advance.id,
-        currency=advance.bank_account.currency or advance.entity.base_currency,
+        currency=bank_account.currency or advance.entity.base_currency,
         narration=f"Advance to {advance.driver.code}",
         rows=rows,
         user=user,
@@ -170,6 +171,8 @@ def post_settlement(settlement: Settlement, *, user=None):
     for d in deductions:
         if d.advance_id:
             adv = d.advance
+            if adv is None:
+                raise DriverError("Settlement deduction references a missing advance.")
             adv.recovered_amount = _q(adv.recovered_amount + _q(d.amount))
             adv.balance = _q(adv.amount - adv.recovered_amount)
             adv.save(update_fields=["recovered_amount", "balance", "updated_at"])

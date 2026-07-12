@@ -106,7 +106,7 @@ def compute_vat_return(tax_return: TaxReturn, *, user=None) -> TaxReturn:
 
     # Rebuild boxes from scratch each compute. Boxes are pure derived output, so
     # hard-delete (not soft) to keep the unique (return, box_code) slot free.
-    tax_return.boxes.all().hard_delete()
+    tax_return.boxes.all().hard_delete()  # type: ignore[attr-defined]
     boxes = []
     split = _emirate_split(entity_ids, start, end)
     for order, (box_code, name) in enumerate(EMIRATES):
@@ -151,10 +151,12 @@ def compute_vat_return(tax_return: TaxReturn, *, user=None) -> TaxReturn:
     )
     TaxReturnBox.objects.bulk_create(boxes)
 
-    if tax_return.vat_group_id and tax_return.vat_group.trn:
-        tax_return.trn = tax_return.vat_group.trn
-    elif tax_return.entity_id:
-        tax_return.trn = tax_return.entity.effective_trn or ""
+    vat_group = tax_return.vat_group if tax_return.vat_group_id else None
+    entity = tax_return.entity if tax_return.entity_id else None
+    if vat_group is not None and vat_group.trn:
+        tax_return.trn = str(vat_group.trn)
+    elif entity is not None:
+        tax_return.trn = entity.effective_trn or ""
 
     tax_return.total_output_vat = output_vat
     tax_return.total_input_vat = input_vat
@@ -217,4 +219,4 @@ def rate_on(tax_code, on: date | None = None) -> Decimal:
         .order_by("-effective_from")
         .first()
     )
-    return hist.rate if hist else tax_code.rate
+    return Decimal(str(hist.rate if hist else tax_code.rate))
