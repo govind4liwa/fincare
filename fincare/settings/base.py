@@ -366,3 +366,7 @@ FEATURES = {
     "FLEET": env("FEATURE_FLEET"),
     "PAYROLL": env("FEATURE_PAYROLL"),
 }
+
+# Split settings modules use ``from .base import *``. Restrict that export to
+# Django's uppercase setting names plus the environment reader they extend.
+__all__ = ["env", *(name for name in globals() if name.isupper())]

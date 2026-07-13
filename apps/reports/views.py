@@ -3,6 +3,8 @@
 GET /api/v1/reports/<code>/?entity_id=&period_id=&basis=&format=json|xlsx|pdf
 """
 
+import logging
+
 from django.http import HttpResponse
 from django.utils import timezone
 
@@ -17,6 +19,7 @@ from apps.reports.services.catalog import build_report
 from apps.users.permissions import HasAnyRole
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+logger = logging.getLogger(__name__)
 
 
 class ReportView(APIView):
@@ -32,8 +35,9 @@ class ReportView(APIView):
 
         try:
             report = build_report(code.upper(), entity_ids=entity_ids, period=period, basis=basis)
-        except (ValueError, KeyError, TypeError) as exc:
-            return Response({"detail": str(exc)}, status=400)
+        except (ValueError, KeyError, TypeError):
+            logger.exception("Report generation rejected for report code %s", code)
+            return Response({"detail": "Invalid report request."}, status=400)
 
         run = ReportRun.objects.create(
             entity_scope=ReportRun.Scope.GROUP if len(entity_ids) > 1 else ReportRun.Scope.ENTITY,

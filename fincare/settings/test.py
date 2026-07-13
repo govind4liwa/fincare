@@ -31,7 +31,7 @@ CACHES = {
 }
 
 # Disable throttling in tests
-REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = ()  # noqa: F405
+REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = ()  # type: ignore[name-defined]  # noqa: F405
 
 # Silence email
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"

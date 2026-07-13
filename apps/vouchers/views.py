@@ -1,5 +1,7 @@
 """Voucher API: CRUD on drafts + post/reverse actions (RBAC-gated)."""
 
+import logging
+
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -9,6 +11,8 @@ from apps.users.permissions import HasAnyRole
 from apps.vouchers.models import Voucher
 from apps.vouchers.serializers import VoucherSerializer
 from apps.vouchers.services.post import VoucherError, post_voucher, reverse_voucher
+
+logger = logging.getLogger(__name__)
 
 
 class VoucherViewSet(viewsets.ModelViewSet):
@@ -22,8 +26,12 @@ class VoucherViewSet(viewsets.ModelViewSet):
         voucher = self.get_object()
         try:
             post_voucher(voucher, user=request.user)
-        except VoucherError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except VoucherError:
+            logger.exception("Voucher posting failed for voucher %s", voucher.pk)
+            return Response(
+                {"detail": "Voucher could not be posted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(self.get_serializer(voucher).data)
 
     @action(detail=True, methods=["post"], url_path="reverse")
@@ -31,8 +39,12 @@ class VoucherViewSet(viewsets.ModelViewSet):
         voucher = self.get_object()
         try:
             mirror = reverse_voucher(voucher, user=request.user)
-        except VoucherError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except VoucherError:
+            logger.exception("Voucher reversal failed for voucher %s", voucher.pk)
+            return Response(
+                {"detail": "Voucher could not be reversed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(
             {"reversed": True, "reversal_entry_no": mirror.entry_no},
             status=status.HTTP_200_OK,
