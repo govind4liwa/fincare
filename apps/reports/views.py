@@ -36,7 +36,7 @@ class ReportView(APIView):
         try:
             report = build_report(code.upper(), entity_ids=entity_ids, period=period, basis=basis)
         except (ValueError, KeyError, TypeError):
-            logger.exception("Report generation rejected for report code %s", code)
+            logger.exception("Report generation rejected")
             return Response({"detail": "Invalid report request."}, status=400)
 
         run = ReportRun.objects.create(
