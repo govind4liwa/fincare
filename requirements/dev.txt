@@ -15,19 +15,19 @@ ruff==0.5.0
 black==24.4.2
 isort==5.13.2
 mypy==1.10.0
-django-stubs[compatible-mypy]==5.0.2
-djangorestframework-stubs[compatible-mypy]==3.15.0
+django-stubs[compatible-mypy]==6.0.7
+djangorestframework-stubs[compatible-mypy]==3.17.0
 
 # --- Security scanners ---
 bandit[toml]==1.7.9
 safety==3.2.0
 
 # --- Dev tools ---
-django-debug-toolbar==4.4.2
+django-debug-toolbar==7.0.0
 ipython==8.25.0
 ipdb==0.13.13
 pre-commit==3.7.1
-django-silk==5.1.0          # request profiler
+django-silk==5.5.0          # request profiler
 
 # --- Docs ---
 mkdocs==1.6.0
