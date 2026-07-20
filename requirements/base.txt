@@ -24,10 +24,10 @@ django-extensions==3.2.3
 django-import-export==4.0.7
 
 # --- Background tasks ---
-celery==5.4.0
-django-celery-beat==2.6.0
-django-celery-results==2.5.1
-redis==5.0.4
+celery==5.6.3
+django-celery-beat==2.9.0
+django-celery-results==2.6.0
+redis==8.0.1
 
 # --- File / Export generation ---
 openpyxl==3.1.2
