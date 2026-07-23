@@ -92,7 +92,7 @@ class Account(BaseModel):
                 name="accounts_account_unique_charge",
             ),
             models.CheckConstraint(
-                check=models.Q(code__regex=CODE_REGEX),
+                condition=models.Q(code__regex=CODE_REGEX),
                 name="accounts_account_code_format",
             ),
         ]
