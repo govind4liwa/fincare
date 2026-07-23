@@ -302,7 +302,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="account",
             constraint=models.CheckConstraint(
-                check=models.Q(("code__regex", "^\\d{3}-\\d{3}-\\d{3}-\\d{3}$")),
+                condition=models.Q(("code__regex", "^\\d{3}-\\d{3}-\\d{3}-\\d{3}$")),
                 name="accounts_account_code_format",
             ),
         ),
