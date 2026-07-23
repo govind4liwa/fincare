@@ -52,7 +52,7 @@ pytz==2024.1
 
 # --- Logging & observability ---
 structlog==24.2.0
-sentry-sdk==2.5.1
+sentry-sdk==2.8.0
 
 # --- Security ---
 django-axes==8.3.1          # brute-force protection
