@@ -14,7 +14,8 @@ freezegun==1.5.1
 ruff==0.5.0
 black==24.4.2
 isort==5.13.2
-mypy==1.10.0
+# mypy bounded by drf-stubs 3.17.0 (needs <2.2) and django-stubs 6.0.7 (needs >=1.13)
+mypy>=1.13,<2.2
 django-stubs[compatible-mypy]==6.0.7
 djangorestframework-stubs[compatible-mypy]==3.17.0
 

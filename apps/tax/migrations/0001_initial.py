@@ -367,7 +367,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="taxreturn",
             constraint=models.CheckConstraint(
-                check=models.Q(
+                condition=models.Q(
                     ("vat_group__isnull", False), ("entity__isnull", False), _connector="OR"
                 ),
                 name="tax_return_scope_required",
