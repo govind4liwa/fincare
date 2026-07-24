@@ -35,7 +35,7 @@ def supplier_aging(entity, as_of=None):
         bucket = _bucket((as_of - due).days)
         row = rows.setdefault(
             bill.supplier_id,
-            {"supplier": bill.supplier, "total": 0, **{b: 0 for b in BUCKETS}},
+            {"supplier": bill.supplier, "total": 0, **dict.fromkeys(BUCKETS, 0)},
         )
         row[bucket] += bill.balance
         row["total"] += bill.balance
