@@ -16,6 +16,9 @@ from apps.exports.services.xlsx import report_to_xlsx_bytes
 from apps.ledger.models import AccountingPeriod
 from apps.reports.models import ReportRun
 from apps.reports.services.catalog import build_report
+from apps.reports.services.dashboard import dashboard_summary
+from apps.tenants.models import Entity
+from apps.tenants.views import accessible_entity_ids
 from apps.users.permissions import HasAnyRole
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -55,3 +58,58 @@ class ReportView(APIView):
             resp["Content-Disposition"] = f'attachment; filename="{code.upper()}.xlsx"'
             return resp
         return Response({"report": report, "run_id": str(run.id)})
+
+
+class DashboardView(APIView):
+    """Headline KPIs for the landing dashboard, scoped to the user's entities.
+
+    GET /api/v1/reports/dashboard/?entity=<id>  (omit entity = all accessible).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        empty = {"revenue": "0.00", "expenses": "0.00", "cash_bank": "0.00", "vat_payable": "0.00"}
+
+        ids = accessible_entity_ids(request.user)  # None = superuser (all entities)
+        requested = request.query_params.get("entity")
+        if requested:
+            if ids is not None and requested not in {str(i) for i in ids}:
+                return Response({"detail": "Not found."}, status=404)
+            entity_ids = [requested]
+        elif ids is None:
+            entity_ids = list(Entity.objects.filter(is_active=True).values_list("id", flat=True))
+        else:
+            entity_ids = list(ids)
+
+        if not entity_ids:
+            return Response({"period": None, **empty})
+
+        today = timezone.now().date()
+        period = (
+            AccountingPeriod.objects.filter(
+                entity_id__in=entity_ids, start_date__lte=today, end_date__gte=today
+            )
+            .order_by("-start_date")
+            .first()
+            or AccountingPeriod.objects.filter(entity_id__in=entity_ids)
+            .order_by("-end_date")
+            .first()
+        )
+        if period is None:
+            return Response({"period": None, **empty})
+
+        kpis = dashboard_summary(entity_ids=entity_ids, period=period)
+        return Response(
+            {
+                "period": {
+                    "name": period.name,
+                    "start": period.start_date,
+                    "end": period.end_date,
+                },
+                "revenue": str(kpis["revenue"]),
+                "expenses": str(kpis["expenses"]),
+                "cash_bank": str(kpis["cash_bank"]),
+                "vat_payable": str(kpis["vat_payable"]),
+            }
+        )
