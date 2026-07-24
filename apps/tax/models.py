@@ -123,7 +123,7 @@ class TaxReturn(BaseModel):
                 name="tax_return_unique_entity_period",
             ),
             models.CheckConstraint(
-                check=models.Q(vat_group__isnull=False) | models.Q(entity__isnull=False),
+                condition=models.Q(vat_group__isnull=False) | models.Q(entity__isnull=False),
                 name="tax_return_scope_required",
             ),
         ]

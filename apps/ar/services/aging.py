@@ -35,7 +35,7 @@ def customer_aging(entity, as_of=None):
         bucket = _bucket((as_of - due).days)
         row = rows.setdefault(
             inv.customer_id,
-            {"customer": inv.customer, "total": 0, **{b: 0 for b in BUCKETS}},
+            {"customer": inv.customer, "total": 0, **dict.fromkeys(BUCKETS, 0)},
         )
         row[bucket] += inv.balance
         row["total"] += inv.balance
