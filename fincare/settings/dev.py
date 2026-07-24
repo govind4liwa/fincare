@@ -4,6 +4,9 @@ from .base import *  # noqa: F403
 
 DEBUG = True
 
+# Accept the compose service host so the Next.js dev API proxy (web:8000) works.
+ALLOWED_HOSTS = [*ALLOWED_HOSTS, "web"]  # noqa: F405
+
 # INSTALLED_APPS and MIDDLEWARE come from the star import above
 INSTALLED_APPS = [*INSTALLED_APPS, "debug_toolbar", "silk"]  # noqa: F405
 
