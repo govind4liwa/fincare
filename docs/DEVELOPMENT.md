@@ -38,10 +38,10 @@ docker compose logs -f web
 ```
 
 App available at:
-- **API:** http://localhost:8000/api/v1/
-- **Admin:** http://localhost:8000/admin/
-- **Schema (Swagger):** http://localhost:8000/api/schema/swagger/
-- **Schema (Redoc):** http://localhost:8000/api/schema/redoc/
+- **API:** http://localhost:8005/api/v1/
+- **Admin:** http://localhost:8005/admin/
+- **Schema (Swagger):** http://localhost:8005/api/schema/swagger/
+- **Schema (Redoc):** http://localhost:8005/api/schema/redoc/
 
 ---
 
@@ -200,7 +200,7 @@ Bypass only in genuine emergencies: `git commit --no-verify`.
 |---|---|---|
 | `psycopg.OperationalError: connection refused` | DB not ready | `docker compose logs db`; wait for healthcheck |
 | `relation "..." does not exist` | Missing migrations | `make migrate` |
-| `port 5432 already in use` | Local Postgres running | Stop local PG or change port in `docker-compose.yml` |
+| `port 55432 already in use` | Another FinCare/PostgreSQL mapping is running | Change `POSTGRES_HOST_PORT` in `.env` |
 | Pre-commit hook fails on commit | Style/lint issue | `make format`, recommit |
 | `make` not found on Windows | Make not installed | `choco install make` or use Git Bash |
 

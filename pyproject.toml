@@ -43,15 +43,36 @@ select = [
     "RUF",   # ruff-specific
 ]
 ignore = [
-    "E501",  # line-too-long (black handles this)
-    "S101",  # assert allowed in tests
-    "DJ001", # null=True on CharField — sometimes needed for nullable
+    "E501",   # line-too-long (black handles this)
+    "S101",   # assert allowed in tests
+    "DJ001",  # null=True on CharField - sometimes needed for nullable
+    "RUF001", # ambiguous unicode in string literals (we use em-dashes)
+    "RUF002", # ambiguous unicode in docstrings
+    "RUF003", # ambiguous unicode in comments
+    "RUF012", # Django Meta uses mutable class attrs (ordering/constraints/indexes)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "S105", "S106"]
+"**/tests/**/*.py" = ["S101", "S105", "S106"]
 "**/migrations/*.py" = ["E501", "N806"]
 "**/settings/*.py" = ["S105", "S106"]
+
+# Mirror [tool.isort] so Ruff's import sorter and isort agree (DJANGO/DRF sections).
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "fincare"]
+section-order = [
+    "future",
+    "standard-library",
+    "django",
+    "drf",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
+[tool.ruff.lint.isort.sections]
+django = ["django"]
+drf = ["rest_framework"]
 
 # ============================================================
 # Black — code formatter
@@ -97,7 +118,8 @@ exclude = ["migrations/", "tests/", "build/", "dist/", ".venv/"]
 plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
 
 [tool.django-stubs]
-django_settings_module = "fincare.settings.dev"
+# Use test settings so mypy can load without dev-only env vars
+django_settings_module = "fincare.settings.test"
 
 # ============================================================
 # pytest
