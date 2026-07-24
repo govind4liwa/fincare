@@ -1,8 +1,8 @@
-"""DRF serializers for AR customers and sales invoices."""
+"""DRF serializers for AR customers, sales invoices, and credit notes."""
 
 from rest_framework import serializers
 
-from apps.ar.models import Customer, SalesInvoice, SalesInvoiceLine
+from apps.ar.models import CreditNote, CreditNoteLine, Customer, SalesInvoice, SalesInvoiceLine
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -121,3 +121,61 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
                 line.setdefault("line_no", index)
                 SalesInvoiceLine.objects.create(invoice=instance, **line)
         return instance
+
+
+class CreditNoteLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CreditNoteLine
+        fields = [
+            "id",
+            "line_no",
+            "revenue_account",
+            "description",
+            "line_amount",
+            "tax_code",
+            "tax_rate",
+            "tax_amount",
+        ]
+        read_only_fields = ["tax_rate", "tax_amount"]
+
+
+class CreditNoteSerializer(serializers.ModelSerializer):
+    lines = CreditNoteLineSerializer(many=True)
+    customer_code = serializers.CharField(source="customer.code", read_only=True)
+    customer_name = serializers.CharField(source="customer.name", read_only=True)
+
+    class Meta:
+        model = CreditNote
+        fields = [
+            "id",
+            "entity",
+            "customer",
+            "customer_code",
+            "customer_name",
+            "credit_note_no",
+            "credit_note_date",
+            "original_invoice",
+            "reason",
+            "subtotal",
+            "tax_total",
+            "total",
+            "status",
+            "journal_entry",
+            "lines",
+        ]
+        read_only_fields = [
+            "credit_note_no",
+            "subtotal",
+            "tax_total",
+            "total",
+            "status",
+            "journal_entry",
+        ]
+
+    def create(self, validated_data):
+        lines = validated_data.pop("lines", [])
+        note = CreditNote.objects.create(**validated_data)
+        for index, line in enumerate(lines, start=1):
+            line.setdefault("line_no", index)
+            CreditNoteLine.objects.create(credit_note=note, **line)
+        return note

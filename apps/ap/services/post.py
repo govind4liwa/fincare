@@ -148,6 +148,86 @@ def post_bill(bill, *, user=None):
 
 
 @transaction.atomic
+def post_debit_note(debit_note, *, user=None):
+    """Post a debit note (supplier return/credit): DR Accounts Payable /
+    CR Expense (per line) / CR Input VAT. The mirror of a purchase bill —
+    it reduces what the entity owes the supplier."""
+    if debit_note.status != BillStatus.DRAFT:
+        raise APError(f"Cannot post a debit note in status {debit_note.status!r}.")
+    lines = list(debit_note.lines.select_related("account", "tax_code").all())
+    if not lines:
+        raise APError("Debit note has no lines.")
+
+    subtotal, tax_total = ZERO, ZERO
+    expense = OrderedDict()  # account -> credit amount
+    for ln in lines:
+        ln.line_amount = _q(ln.line_amount)
+        ln.tax_rate = ln.tax_code.rate if ln.tax_code_id else ZERO
+        ln.tax_amount = _q(ln.line_amount * Decimal(ln.tax_rate) / Decimal(100))
+        ln.save(update_fields=["line_amount", "tax_rate", "tax_amount", "updated_at"])
+        subtotal += ln.line_amount
+        tax_total += ln.tax_amount
+        expense[ln.account] = expense.get(ln.account, ZERO) + ln.line_amount
+    total = subtotal + tax_total
+
+    entry = JournalEntry.objects.create(
+        entity=debit_note.entity,
+        entry_date=debit_note.debit_note_date,
+        source_type="debit_note",
+        source_id=debit_note.id,
+        narration=debit_note.reason or "Debit note",
+    )
+    line_no = 1
+    for account, amount in expense.items():
+        JournalLine.objects.create(entry=entry, line_no=line_no, account=account, credit=amount)
+        line_no += 1
+    if tax_total > ZERO:
+        JournalLine.objects.create(
+            entry=entry,
+            line_no=line_no,
+            account=_vat_account(debit_note.entity, Account.AccountType.VAT_INPUT, "Input VAT"),
+            credit=tax_total,
+        )
+        line_no += 1
+    JournalLine.objects.create(
+        entry=entry,
+        line_no=line_no,
+        account=debit_note.supplier.payable_account,
+        debit=total,
+        party_type="supplier",
+        party_id=debit_note.supplier_id,
+    )
+
+    try:
+        post_journal_entry(entry, user=user)
+    except PostingError as exc:
+        raise APError(str(exc)) from exc
+
+    debit_note.debit_note_no = sequences.allocate(
+        entity_id=debit_note.entity_id,
+        code="DEBIT_NOTE",
+        period_key=str(debit_note.debit_note_date.year),
+        prefix="DN-",
+        padding=6,
+    ).formatted
+    debit_note.subtotal = subtotal
+    debit_note.tax_total = tax_total
+    debit_note.total = total
+    debit_note.status = BillStatus.POSTED
+    debit_note.journal_entry = entry
+    debit_note.save()
+
+    audit_record(
+        action="post",
+        instance=debit_note,
+        actor=user,
+        entity_id=debit_note.entity_id,
+        message=f"Posted {debit_note.debit_note_no} total={total}",
+    )
+    return debit_note
+
+
+@transaction.atomic
 def apply_payment_allocation(
     bill, *, amount, source_type, source_id, allocation_date=None, user=None
 ):

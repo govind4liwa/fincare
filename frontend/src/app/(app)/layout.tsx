@@ -6,6 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
+  FileMinus2,
+  FilePlus2,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -25,6 +27,8 @@ const NAV = [
   { href: "/vouchers", label: "Vouchers", icon: Receipt },
   { href: "/invoices", label: "Sales Invoices", icon: FileText },
   { href: "/bills", label: "Purchase Bills", icon: ReceiptText },
+  { href: "/credit-notes", label: "Credit Notes", icon: FileMinus2 },
+  { href: "/debit-notes", label: "Debit Notes", icon: FilePlus2 },
   { href: "/parties", label: "Customers & Suppliers", icon: Users },
   { href: "/fleet", label: "Fleet & Drivers", icon: Truck },
   { href: "/reports", label: "Reports", icon: BarChart3 },
