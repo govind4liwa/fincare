@@ -20,6 +20,9 @@ api_v1_patterns = [
     path("", include("apps.fleet.urls")),  # /api/v1/vehicles/
     path("", include("apps.drivers.urls")),  # /api/v1/drivers/
     path("", include("apps.vouchers.urls")),  # /api/v1/vouchers/
+    path(
+        "", include("apps.banking.urls")
+    ),  # /api/v1/{bank-accounts,bank-statements,reconciliations}/
     path("reports/", include("apps.reports.urls")),  # /api/v1/reports/<code>/
     # Future:
     # path("users/", include("apps.users.urls")),
