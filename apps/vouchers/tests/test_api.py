@@ -1,14 +1,17 @@
 """Voucher API tests: create a draft and post it via the /post/ action."""
 
 import uuid
+from datetime import date
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 
 from rest_framework.test import APIClient
 
 import pytest
 
-from apps.vouchers.models import VoucherStatus
+from apps.tenants.models import UserEntityMembership
+from apps.vouchers.models import Voucher, VoucherStatus
 
 pytestmark = pytest.mark.django_db
 
@@ -52,3 +55,34 @@ def test_create_then_post_voucher(api, entity, acct):
     assert posted.data["status"] == VoucherStatus.POSTED
     assert posted.data["voucher_no"].startswith("RV-")
     assert posted.data["journal_entry"] is not None
+
+
+def test_vouchers_scoped_by_membership(entity):
+    voucher = Voucher.objects.create(
+        entity=entity, voucher_type="journal", voucher_date=date(2026, 6, 15)
+    )
+    acct_group, _ = Group.objects.get_or_create(name="accountant")
+
+    member = User.objects.create_user(email="member@example.com", password="pw")
+    member.groups.add(acct_group)
+    UserEntityMembership.objects.create(user=member, entity=entity)
+    client = APIClient()
+    client.force_authenticate(member)
+    res = client.get("/api/v1/vouchers/")
+    assert res.status_code == 200
+    assert {r["id"] for r in res.data["results"]} == {str(voucher.id)}
+
+    outsider = User.objects.create_user(email="outsider@example.com", password="pw")
+    outsider.groups.add(acct_group)
+    other = APIClient()
+    other.force_authenticate(outsider)
+    assert other.get("/api/v1/vouchers/").data["results"] == []
+
+
+def test_vouchers_entity_filter(api, entity):
+    voucher = Voucher.objects.create(
+        entity=entity, voucher_type="payment", voucher_date=date(2026, 6, 20)
+    )
+    res = api.get(f"/api/v1/vouchers/?entity={entity.id}")
+    assert res.status_code == 200
+    assert str(voucher.id) in {r["id"] for r in res.data["results"]}
