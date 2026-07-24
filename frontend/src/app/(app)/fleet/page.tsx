@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Plus, Search } from "lucide-react";
 import { useEntity } from "@/lib/entity-context";
 import { listDrivers, listVehicles, type Driver, type Vehicle } from "@/lib/fleet";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -11,6 +14,7 @@ import { cn } from "@/lib/utils";
 type Tab = "vehicles" | "drivers";
 
 export default function FleetPage() {
+  const router = useRouter();
   const { selectedId, selectedEntity } = useEntity();
   const [tab, setTab] = useState<Tab>("vehicles");
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -91,14 +95,22 @@ export default function FleetPage() {
               : "All accessible entities"}
           </p>
         </div>
-        <div className="relative w-full max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-8"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative w-full max-w-xs">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          <Link href={`/fleet/${tab}/new`}>
+            <Button size="sm" className="whitespace-nowrap">
+              <Plus className="h-4 w-4" />
+              New {tab === "vehicles" ? "vehicle" : "driver"}
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -135,7 +147,11 @@ export default function FleetPage() {
                   </thead>
                   <tbody>
                     {filteredVehicles.map((v) => (
-                      <tr key={v.id} className="border-b border-border/60 last:border-0">
+                      <tr
+                        key={v.id}
+                        onClick={() => router.push(`/fleet/vehicles/${v.id}/edit`)}
+                        className="cursor-pointer border-b border-border/60 last:border-0 hover:bg-accent/50"
+                      >
                         <td className="whitespace-nowrap px-4 py-2 font-mono text-xs">{v.code}</td>
                         <td className="whitespace-nowrap px-4 py-2">
                           {v.plate_no ? `${v.plate_emirate} ${v.plate_no}`.trim() : "—"}
@@ -173,7 +189,11 @@ export default function FleetPage() {
                 </thead>
                 <tbody>
                   {filteredDrivers.map((d) => (
-                    <tr key={d.id} className="border-b border-border/60 last:border-0">
+                    <tr
+                      key={d.id}
+                      onClick={() => router.push(`/fleet/drivers/${d.id}/edit`)}
+                      className="cursor-pointer border-b border-border/60 last:border-0 hover:bg-accent/50"
+                    >
                       <td className="whitespace-nowrap px-4 py-2 font-mono text-xs">{d.code}</td>
                       <td className="px-4 py-2">{d.name}</td>
                       <td className="px-4 py-2 text-muted-foreground">{d.nationality || "—"}</td>

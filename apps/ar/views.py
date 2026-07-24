@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.views import scope_to_entities
+from apps.accounts.views import EntityScopedMasterViewSet, scope_to_entities
 from apps.ar.models import Customer, SalesInvoice
 from apps.ar.serializers import CustomerSerializer, SalesInvoiceSerializer
 from apps.ar.services.post import ARError, post_invoice
@@ -16,17 +16,12 @@ from apps.users.permissions import HasAnyRole
 logger = logging.getLogger(__name__)
 
 
-class CustomerViewSet(viewsets.ReadOnlyModelViewSet):
+class CustomerViewSet(EntityScopedMasterViewSet):
+    queryset = Customer.objects.select_related("receivable_account")
     serializer_class = CustomerSerializer
-    permission_classes = [IsAuthenticated]
     filterset_fields = ["entity", "customer_type", "is_active"]
     ordering_fields = ["code", "name"]
     ordering = ["code"]
-
-    def get_queryset(self):
-        return scope_to_entities(
-            Customer.objects.select_related("receivable_account"), self.request.user
-        )
 
 
 class SalesInvoiceViewSet(viewsets.ModelViewSet):

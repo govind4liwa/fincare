@@ -8,7 +8,10 @@ export type Vehicle = {
   make: string;
   model: string;
   model_year: number | null;
+  vin: string;
   ownership: string;
+  acquisition_date: string | null;
+  acquisition_cost: string;
   is_active: boolean;
 };
 
@@ -21,6 +24,7 @@ export type Driver = {
   emirates_id: string;
   phone: string;
   basic_salary: string;
+  commission_rate: string;
   is_active: boolean;
 };
 
