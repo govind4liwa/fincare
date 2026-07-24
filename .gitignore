@@ -1,17 +1,18 @@
-# --- Python ---
+# --- Python --- (dir patterns anchored to repo root so they don't match nested
+# JS paths like frontend/src/lib; the frontend has its own .gitignore.)
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
+/build/
 develop-eggs/
-dist/
+/dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/

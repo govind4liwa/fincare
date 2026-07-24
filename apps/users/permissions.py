@@ -7,7 +7,7 @@ Roles are modelled as Django Groups (``user.groups``). Two layers are available:
   available for object/CRUD-level control on ViewSets.
 """
 
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
 class HasAnyRole(BasePermission):
@@ -29,3 +29,22 @@ class HasAnyRole(BasePermission):
         if user.is_superuser:
             return True
         return user.groups.filter(name__in=required).exists()
+
+
+class ReadAnyWriteRole(BasePermission):
+    """Any authenticated user may read; writes require one of ``required_roles``.
+
+    Lets master-data endpoints stay readable to every member while gating
+    create/update/delete to accounting roles (same ``required_roles`` contract
+    as :class:`HasAnyRole`).
+    """
+
+    message = "You do not have the required role to modify this record."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        return HasAnyRole().has_permission(request, view)

@@ -65,6 +65,26 @@ services:
       redis:
         condition: service_healthy
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: fincare-frontend
+    restart: unless-stopped
+    environment:
+      BACKEND_INTERNAL_URL: http://web:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+      WATCHPACK_POLLING: "true"   # reliable file-watching in Docker on Windows
+    ports:
+      - "${FRONTEND_HOST_PORT:-3005}:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules   # keep the image's linux node_modules (host is Windows)
+      - /app/.next
+    depends_on:
+      - web
+
   celery_worker:
     build:
       context: .
