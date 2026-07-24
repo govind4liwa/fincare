@@ -40,9 +40,14 @@ def auto_match(
     amount_tolerance=ZERO,
     date_window_days=3,
     match_reference=False,
+    mark_complete=True,
     user=None,
 ):
-    """Auto-match statement lines to GL lines. Returns the count of new matches."""
+    """Auto-match statement lines to GL lines. Returns the count of new matches.
+
+    When ``mark_complete`` is False the reconciliation is left ``IN_PROGRESS``
+    even if every line matched — formal completion/locking is a later concern.
+    """
     statement = reconciliation.statement if reconciliation.statement_id else None
     if statement is None:
         raise ValueError("Reconciliation has no statement to match against.")
@@ -104,9 +109,10 @@ def auto_match(
     reconciliation.statement_balance = statement.closing_balance
     reconciliation.difference = reconciliation.statement_balance - reconciliation.gl_balance
     unmatched = statement.lines.filter(is_matched=False).exists()
-    reconciliation.status = (
-        Reconciliation.Status.IN_PROGRESS if unmatched else Reconciliation.Status.COMPLETED
-    )
+    if mark_complete and not unmatched:
+        reconciliation.status = Reconciliation.Status.COMPLETED
+    else:
+        reconciliation.status = Reconciliation.Status.IN_PROGRESS
     reconciliation.performed_by = user or reconciliation.performed_by
     reconciliation.save(
         update_fields=[
@@ -127,3 +133,61 @@ def auto_match(
         message=f"Auto-matched {matched} line(s); difference={reconciliation.difference}",
     )
     return matched
+
+
+def recompute_balances(reconciliation):
+    """Refresh statement/GL balances + difference (no matching), persisted."""
+    statement = reconciliation.statement if reconciliation.statement_id else None
+    reconciliation.gl_balance = _gl_balance(
+        reconciliation.bank_account.gl_account,
+        reconciliation.entity_id,
+        reconciliation.recon_date,
+    )
+    reconciliation.statement_balance = statement.closing_balance if statement else ZERO
+    reconciliation.difference = reconciliation.statement_balance - reconciliation.gl_balance
+    reconciliation.save(
+        update_fields=["gl_balance", "statement_balance", "difference", "updated_at"]
+    )
+    return reconciliation
+
+
+def reconciliation_detail(reconciliation):
+    """Workspace view: matched pairs, unmatched statement lines, the bank GL lines
+    (with a matched flag), and the balance/difference summary."""
+    bank_gl = reconciliation.bank_account.gl_account
+    items = list(
+        reconciliation.items.select_related("statement_line", "journal_line", "journal_line__entry")
+    )
+    matched_jl_ids = {it.journal_line_id for it in items if it.journal_line_id}
+
+    statement = reconciliation.statement if reconciliation.statement_id else None
+    unmatched_lines = (
+        list(statement.lines.filter(is_matched=False).order_by("line_no")) if statement else []
+    )
+    gl_lines = list(
+        JournalLine.objects.filter(
+            account=bank_gl,
+            entry__status=EntryStatus.POSTED,
+            entry__entity_id=reconciliation.entity_id,
+            entry__entry_date__lte=reconciliation.recon_date,
+        )
+        .select_related("entry")
+        .order_by("entry__entry_date", "line_no")
+    )
+
+    return {
+        "items": items,
+        "unmatched_lines": unmatched_lines,
+        "gl_lines": gl_lines,
+        "matched_jl_ids": matched_jl_ids,
+        "totals": {
+            "statement_balance": reconciliation.statement_balance,
+            "gl_balance": reconciliation.gl_balance,
+            "difference": reconciliation.difference,
+            "matched_count": len(items),
+            "matched_total": sum((it.amount for it in items), ZERO),
+            "unmatched_count": len(unmatched_lines),
+            "unmatched_deposits": sum((sl.deposit for sl in unmatched_lines), ZERO),
+            "unmatched_withdrawals": sum((sl.withdrawal for sl in unmatched_lines), ZERO),
+        },
+    }

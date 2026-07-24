@@ -9,10 +9,12 @@ import {
   FileMinus2,
   FilePlus2,
   FileText,
+  Landmark,
   LayoutDashboard,
   LogOut,
   Receipt,
   ReceiptText,
+  Scale,
   Truck,
   Users,
 } from "lucide-react";
@@ -31,6 +33,8 @@ const NAV = [
   { href: "/debit-notes", label: "Debit Notes", icon: FilePlus2 },
   { href: "/parties", label: "Customers & Suppliers", icon: Users },
   { href: "/fleet", label: "Fleet & Drivers", icon: Truck },
+  { href: "/banking", label: "Bank Accounts", icon: Landmark },
+  { href: "/reconcile", label: "Reconciliation", icon: Scale },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
