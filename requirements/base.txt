@@ -48,7 +48,7 @@ gunicorn==22.0.0
 # --- Validation / helpers ---
 pydantic==2.7.3
 python-dateutil==2.9.0.post0
-pytz==2024.1
+pytz==2026.2
 
 # --- Logging & observability ---
 structlog==24.2.0
