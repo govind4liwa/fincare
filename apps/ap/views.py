@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.views import scope_to_entities
+from apps.accounts.views import EntityScopedMasterViewSet, scope_to_entities
 from apps.ap.models import PurchaseBill, Supplier
 from apps.ap.serializers import PurchaseBillSerializer, SupplierSerializer
 from apps.ap.services.post import APError, post_bill
@@ -16,17 +16,12 @@ from apps.users.permissions import HasAnyRole
 logger = logging.getLogger(__name__)
 
 
-class SupplierViewSet(viewsets.ReadOnlyModelViewSet):
+class SupplierViewSet(EntityScopedMasterViewSet):
+    queryset = Supplier.objects.select_related("payable_account")
     serializer_class = SupplierSerializer
-    permission_classes = [IsAuthenticated]
     filterset_fields = ["entity", "is_active"]
     ordering_fields = ["code", "name"]
     ordering = ["code"]
-
-    def get_queryset(self):
-        return scope_to_entities(
-            Supplier.objects.select_related("payable_account"), self.request.user
-        )
 
 
 class PurchaseBillViewSet(viewsets.ModelViewSet):

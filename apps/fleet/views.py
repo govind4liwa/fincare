@@ -1,19 +1,13 @@
-"""Fleet vehicle master API (entity-scoped, read-only)."""
+"""Fleet vehicle master API (entity-scoped CRUD; writes require an accounting role)."""
 
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
-
-from apps.accounts.views import scope_to_entities
+from apps.accounts.views import EntityScopedMasterViewSet
 from apps.fleet.models import Vehicle
 from apps.fleet.serializers import VehicleSerializer
 
 
-class VehicleViewSet(viewsets.ReadOnlyModelViewSet):
+class VehicleViewSet(EntityScopedMasterViewSet):
+    queryset = Vehicle.objects.all()
     serializer_class = VehicleSerializer
-    permission_classes = [IsAuthenticated]
     filterset_fields = ["entity", "ownership", "is_active"]
     ordering_fields = ["code", "make"]
     ordering = ["code"]
-
-    def get_queryset(self):
-        return scope_to_entities(Vehicle.objects.all(), self.request.user)

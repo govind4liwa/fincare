@@ -6,8 +6,12 @@ export type Customer = {
   name: string;
   trn: string;
   customer_type: string;
+  receivable_account: string;
+  receivable_account_code: string;
+  credit_limit: string | null;
   email: string;
   phone: string;
+  address: string;
   emirate: string;
   credit_days: number | null;
   is_active: boolean;
@@ -18,8 +22,11 @@ export type Supplier = {
   code: string;
   name: string;
   trn: string;
+  payable_account: string;
+  payable_account_code: string;
   email: string;
   phone: string;
+  address: string;
   credit_days: number | null;
   is_active: boolean;
 };

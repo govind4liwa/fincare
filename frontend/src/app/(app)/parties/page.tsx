@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Plus, Search } from "lucide-react";
 import { useEntity } from "@/lib/entity-context";
 import {
   listCustomers,
@@ -9,6 +11,7 @@ import {
   type Customer,
   type Supplier,
 } from "@/lib/parties";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -16,6 +19,7 @@ import { cn } from "@/lib/utils";
 type Tab = "customers" | "suppliers";
 
 export default function PartiesPage() {
+  const router = useRouter();
   const { selectedId, selectedEntity } = useEntity();
   const [tab, setTab] = useState<Tab>("customers");
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -75,14 +79,22 @@ export default function PartiesPage() {
               : "All accessible entities"}
           </p>
         </div>
-        <div className="relative w-full max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search code, name or TRN…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-8"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative w-full max-w-xs">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search code, name or TRN…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          <Link href={`/parties/${tab}/new`}>
+            <Button size="sm" className="whitespace-nowrap">
+              <Plus className="h-4 w-4" />
+              New {tab === "customers" ? "customer" : "supplier"}
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -103,7 +115,7 @@ export default function PartiesPage() {
         <Card>
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
             {rows.length === 0
-              ? `No ${tab} yet. Create/edit forms are an upcoming slice.`
+              ? `No ${tab} yet — use the “New ${tab === "customers" ? "customer" : "supplier"}” button to add one.`
               : `No ${tab} match “${query}”.`}
           </CardContent>
         </Card>
@@ -124,7 +136,11 @@ export default function PartiesPage() {
                 </thead>
                 <tbody>
                   {filtered.map((r) => (
-                    <tr key={r.id} className="border-b border-border/60 last:border-0">
+                    <tr
+                      key={r.id}
+                      onClick={() => router.push(`/parties/${tab}/${r.id}/edit`)}
+                      className="cursor-pointer border-b border-border/60 last:border-0 hover:bg-accent/50"
+                    >
                       <td className="whitespace-nowrap px-4 py-2 font-mono text-xs">{r.code}</td>
                       <td className="px-4 py-2">{r.name}</td>
                       <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">
