@@ -73,6 +73,15 @@ services:
     container_name: fincare-celery-worker
     restart: unless-stopped
     command: celery -A fincare worker --loglevel=info --concurrency=2
+    healthcheck:
+      # Worker replies to Celery's ping. The web-oriented /health/ check baked
+      # into the image doesn't apply here (celery containers run no HTTP server).
+      # -d targets THIS container's node so it stays correct when workers scale.
+      test: ["CMD-SHELL", "celery -A fincare inspect ping -d celery@$$(cat /etc/hostname) | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       DJANGO_SETTINGS_MODULE: fincare.settings.dev
     env_file:
@@ -93,6 +102,11 @@ services:
     container_name: fincare-celery-beat
     restart: unless-stopped
     command: celery -A fincare beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    healthcheck:
+      # Beat is a scheduler: no ping interface, no HTTP server. The inherited
+      # web /health/ check can't apply, so disable it rather than report a
+      # misleading "unhealthy".
+      disable: true
     environment:
       DJANGO_SETTINGS_MODULE: fincare.settings.dev
     env_file:
