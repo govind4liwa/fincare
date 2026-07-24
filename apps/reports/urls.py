@@ -2,8 +2,9 @@
 
 from django.urls import path
 
-from apps.reports.views import ReportView
+from apps.reports.views import DashboardView, ReportView
 
 urlpatterns = [
+    path("dashboard/", DashboardView.as_view(), name="report-dashboard"),
     path("<str:code>/", ReportView.as_view(), name="report-catalog"),
 ]
