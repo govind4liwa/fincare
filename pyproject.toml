@@ -1,6 +1,6 @@
 [project]
 name = "fincare"
-version = "0.1.0"
+version = "0.2.0"
 description = "Professional bookkeeping & accounting system for UAE SMEs and multi-entity groups."
 authors = [{ name = "Govind", email = "govind4liwa@yahoo.com" }]
 readme = "README.md"

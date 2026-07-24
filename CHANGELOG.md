@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-25
+
+Phase 1.6 — the **operator web UI**: a Next.js frontend for day-to-day
+bookkeeping, plus the write APIs behind it.
+
+### Added
+- **Next.js 16 frontend** (monorepo `frontend/`, Dockerized on port 3005):
+  JWT email login, an app shell with a live **entity switcher**, light/dark
+  theme, and a Next→DRF API proxy.
+- **Read screens**: Chart of Accounts, Customers & Suppliers, Fleet & Drivers,
+  Reports viewer (Trial Balance / P&L / Balance Sheet / Cash Flow with Excel
+  export), and a Dashboard with KPIs wired to real ledger figures.
+- **Entry forms** (create → post, with live totals): Vouchers, Sales Invoices,
+  Purchase Bills (reverse-charge + per-line recoverable VAT), Credit Notes,
+  and Debit Notes.
+- **Master create/edit forms**: Customers, Suppliers, Vehicles, Drivers, and
+  Chart of Accounts (codes composed as `EEE-MMM-SSS-CCC` per ADR-0004 and
+  immutable once created).
+- **AP debit-note posting** (`post_debit_note`) — the mirror of a purchase bill.
+- **Receipt/payment allocation** — settle open invoices and bills against
+  receipts, payments, and credit/debit notes (subledger reconciliation, capped
+  at each source's unallocated amount).
+- Supporting **DRF APIs** for all of the above (entities, accounts / groups /
+  tax-codes, customers, suppliers, invoices, bills, credit/debit notes, periods,
+  vehicles, drivers, vouchers, reports/dashboard) — entity-scoped, with
+  role-gated writes.
+
+### Fixed
+- Report **Excel export** returned 404 — the export param is `export=`, not
+  `format=` (which DRF reserves for content negotiation).
+- Next→DRF **API proxy** now reaches DRF correctly (trailing-slash handling +
+  `ALLOWED_HOSTS`).
+- Email-based **login**; a `.gitignore` rule that was hiding `frontend/src/lib/`.
+
+### Changed
+- Master-data endpoints share an `EntityScopedMasterViewSet` — reads open to
+  members, writes require an accounting role, and deletion is disabled
+  (deactivate via `is_active`, never hard-delete).
+
+### Security
+- DRF error responses no longer echo exception text (CodeQL
+  `py/information-exposure`).
+
 ## [0.1.0] - 2026-07-24
 
 First application release — the complete FinCare accounting backend.
@@ -43,5 +86,6 @@ First application release — the complete FinCare accounting backend.
 - Resolved all outstanding Dependabot advisories (**80 → 0**; 6 critical, 25 high),
   covering Django, WeasyPrint, and sentry-sdk on the production dependency set.
 
-[Unreleased]: https://github.com/govind4liwa/fincare/compare/v0.1.0...develop
+[Unreleased]: https://github.com/govind4liwa/fincare/compare/v0.2.0...develop
+[0.2.0]: https://github.com/govind4liwa/fincare/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/govind4liwa/fincare/releases/tag/v0.1.0
