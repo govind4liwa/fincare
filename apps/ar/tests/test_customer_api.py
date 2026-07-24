@@ -55,7 +55,8 @@ def test_member_without_role_can_read_but_not_write(entity):
     UserEntityMembership.objects.create(user=user, entity=entity)
     client = APIClient()
     client.force_authenticate(user)
-    assert client.get("/api/v1/customers/").status_code == 200
+    read = client.get("/api/v1/customers/")
+    assert read.status_code == 200
     res = client.post("/api/v1/customers/", _payload(entity), format="json")
     assert res.status_code == 403
 
@@ -64,4 +65,5 @@ def test_delete_is_disabled(entity):
     client = _superuser()
     cid = client.post("/api/v1/customers/", _payload(entity), format="json").data["id"]
     # Masters are deactivated (is_active=False), never hard-deleted.
-    assert client.delete(f"/api/v1/customers/{cid}/").status_code == 405
+    deleted = client.delete(f"/api/v1/customers/{cid}/")
+    assert deleted.status_code == 405
