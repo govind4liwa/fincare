@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
-  ChevronDown,
   LayoutDashboard,
   LogOut,
   Receipt,
@@ -14,6 +13,8 @@ import {
   Users,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { EntityProvider } from "@/lib/entity-context";
+import { EntitySwitcher } from "@/components/entity-switcher";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -43,56 +44,53 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen">
-      {/* Sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card md:flex">
-        <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold">
-            F
+    <EntityProvider>
+      <div className="flex min-h-screen">
+        {/* Sidebar */}
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card md:flex">
+          <div className="flex h-14 items-center gap-2 border-b border-border px-4">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold">
+              F
+            </div>
+            <span className="font-semibold">FinCare</span>
           </div>
-          <span className="font-semibold">FinCare</span>
-        </div>
-        <nav className="flex flex-1 flex-col gap-1 p-3">
-          {NAV.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(`${href}/`);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
-      </aside>
+          <nav className="flex flex-1 flex-col gap-1 p-3">
+            {NAV.map(({ href, label, icon: Icon }) => {
+              const active = pathname === href || pathname.startsWith(`${href}/`);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+        </aside>
 
-      {/* Main column */}
-      <div className="flex flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b border-border bg-card px-4">
-          {/* Entity switcher (placeholder until the tenants API is wired) */}
-          <button className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent">
-            <span className="text-muted-foreground">Entity:</span>
-            <span className="font-medium">All entities</span>
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          </button>
-          <button
-            onClick={logout}
-            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          >
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </button>
-        </header>
-        <main className="flex-1 p-6">{children}</main>
+        {/* Main column */}
+        <div className="flex flex-1 flex-col">
+          <header className="flex h-14 items-center justify-between border-b border-border bg-card px-4">
+            <EntitySwitcher />
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </button>
+          </header>
+          <main className="flex-1 p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </EntityProvider>
   );
 }

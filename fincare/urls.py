@@ -12,11 +12,11 @@ api_v1_patterns = [
     path("auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("auth/token/verify/", TokenVerifyView.as_view(), name="token_verify"),
     path("core/", include("apps.core.urls")),
+    path("tenants/", include("apps.tenants.urls")),  # /api/v1/tenants/{entities,branches}/
     path("", include("apps.vouchers.urls")),  # /api/v1/vouchers/
     path("reports/", include("apps.reports.urls")),  # /api/v1/reports/<code>/
     # Future:
     # path("users/", include("apps.users.urls")),
-    # path("tenants/", include("apps.tenants.urls")),
     # path("accounts/", include("apps.accounts.urls")),
     # path("ledger/", include("apps.ledger.urls")),
     # ...
