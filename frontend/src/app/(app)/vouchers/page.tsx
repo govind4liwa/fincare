@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { useEntity } from "@/lib/entity-context";
 import { listVouchers, type Voucher, type VoucherStatus } from "@/lib/vouchers";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -98,6 +101,12 @@ export default function VouchersPage() {
             <option value="reversed">Reversed</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          <Link href="/vouchers/new">
+            <Button size="sm">
+              <Plus className="h-4 w-4" />
+              New voucher
+            </Button>
+          </Link>
         </div>
       </div>
 

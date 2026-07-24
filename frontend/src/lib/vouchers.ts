@@ -35,3 +35,35 @@ export async function listVouchers(
   const data = (await res.json()) as Paginated<Voucher>;
   return { count: data.count, results: data.results };
 }
+
+export type VoucherLineInput = {
+  account: string;
+  description: string;
+  debit: string;
+  credit: string;
+};
+
+export type VoucherCreateInput = {
+  entity: string;
+  voucher_type: string;
+  voucher_date: string;
+  reference: string;
+  narration: string;
+  lines: VoucherLineInput[];
+};
+
+async function detail(res: Response, fallback: string): Promise<string> {
+  const data = (await res.json().catch(() => ({}))) as { detail?: unknown };
+  return typeof data.detail === "string" ? data.detail : fallback;
+}
+
+export async function createVoucher(payload: VoucherCreateInput): Promise<{ id: string }> {
+  const res = await apiFetch("/vouchers/", { method: "POST", body: JSON.stringify(payload) });
+  if (!res.ok) throw new Error(await detail(res, "Could not save the voucher."));
+  return (await res.json()) as { id: string };
+}
+
+export async function postVoucher(id: string): Promise<void> {
+  const res = await apiFetch(`/vouchers/${id}/post/`, { method: "POST", body: JSON.stringify({}) });
+  if (!res.ok) throw new Error(await detail(res, "Could not post the voucher."));
+}
