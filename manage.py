@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """Django management entry point for FinCare."""
+
 import os
 import sys
 
