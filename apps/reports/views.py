@@ -1,6 +1,9 @@
-"""Report catalog API: build a report and return JSON, Excel or PDF.
+"""Report catalog API: build a report and return JSON or Excel.
 
-GET /api/v1/reports/<code>/?entity_id=&period_id=&basis=&format=json|xlsx|pdf
+GET /api/v1/reports/<code>/?entity_id=&period_id=&basis=&export=json|xlsx
+
+Note: the export format uses ``export=`` (not ``format=``) — DRF reserves the
+``format`` query param for content negotiation and would 404 on ``xlsx``.
 """
 
 import logging
@@ -33,7 +36,7 @@ class ReportView(APIView):
         entity_ids = [e for e in request.query_params.getlist("entity_id") if e]
         period_id = request.query_params.get("period_id")
         basis = request.query_params.get("basis", "accrual")
-        fmt = request.query_params.get("format", "json")
+        fmt = request.query_params.get("export", "json")
         period = AccountingPeriod.objects.filter(id=period_id).first() if period_id else None
 
         try:

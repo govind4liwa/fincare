@@ -35,12 +35,13 @@ export async function listPeriods(entityId?: string | null): Promise<Period[]> {
   return ((await res.json()) as Paginated<Period>).results;
 }
 
-function reportQuery(entityId: string, periodId: string, basis: string, format: string) {
+function reportQuery(entityId: string, periodId: string, basis: string, exportFmt: string) {
+  // Use `export=` (not `format=`) — DRF reserves `format` for content negotiation.
   return new URLSearchParams({
     entity_id: entityId,
     period_id: periodId,
     basis,
-    format,
+    export: exportFmt,
   }).toString();
 }
 
