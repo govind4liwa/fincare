@@ -14,6 +14,8 @@ api_v1_patterns = [
     path("core/", include("apps.core.urls")),
     path("tenants/", include("apps.tenants.urls")),  # /api/v1/tenants/{entities,branches}/
     path("", include("apps.accounts.urls")),  # /api/v1/{accounts,account-groups,tax-codes}/
+    path("", include("apps.ar.urls")),  # /api/v1/customers/
+    path("", include("apps.ap.urls")),  # /api/v1/suppliers/
     path("", include("apps.vouchers.urls")),  # /api/v1/vouchers/
     path("reports/", include("apps.reports.urls")),  # /api/v1/reports/<code>/
     # Future:
