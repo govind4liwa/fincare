@@ -6,9 +6,11 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
+  FileText,
   LayoutDashboard,
   LogOut,
   Receipt,
+  ReceiptText,
   Truck,
   Users,
 } from "lucide-react";
@@ -21,6 +23,8 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/accounts", label: "Chart of Accounts", icon: BookOpen },
   { href: "/vouchers", label: "Vouchers", icon: Receipt },
+  { href: "/invoices", label: "Sales Invoices", icon: FileText },
+  { href: "/bills", label: "Purchase Bills", icon: ReceiptText },
   { href: "/parties", label: "Customers & Suppliers", icon: Users },
   { href: "/fleet", label: "Fleet & Drivers", icon: Truck },
   { href: "/reports", label: "Reports", icon: BarChart3 },
