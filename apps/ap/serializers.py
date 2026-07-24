@@ -1,8 +1,8 @@
-"""DRF serializers for AP suppliers and purchase bills."""
+"""DRF serializers for AP suppliers, purchase bills, and debit notes."""
 
 from rest_framework import serializers
 
-from apps.ap.models import PurchaseBill, PurchaseBillLine, Supplier
+from apps.ap.models import DebitNote, DebitNoteLine, PurchaseBill, PurchaseBillLine, Supplier
 
 
 class SupplierSerializer(serializers.ModelSerializer):
@@ -116,3 +116,61 @@ class PurchaseBillSerializer(serializers.ModelSerializer):
                 line.setdefault("line_no", index)
                 PurchaseBillLine.objects.create(bill=instance, **line)
         return instance
+
+
+class DebitNoteLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DebitNoteLine
+        fields = [
+            "id",
+            "line_no",
+            "account",
+            "description",
+            "line_amount",
+            "tax_code",
+            "tax_rate",
+            "tax_amount",
+        ]
+        read_only_fields = ["tax_rate", "tax_amount"]
+
+
+class DebitNoteSerializer(serializers.ModelSerializer):
+    lines = DebitNoteLineSerializer(many=True)
+    supplier_code = serializers.CharField(source="supplier.code", read_only=True)
+    supplier_name = serializers.CharField(source="supplier.name", read_only=True)
+
+    class Meta:
+        model = DebitNote
+        fields = [
+            "id",
+            "entity",
+            "supplier",
+            "supplier_code",
+            "supplier_name",
+            "debit_note_no",
+            "debit_note_date",
+            "original_bill",
+            "reason",
+            "subtotal",
+            "tax_total",
+            "total",
+            "status",
+            "journal_entry",
+            "lines",
+        ]
+        read_only_fields = [
+            "debit_note_no",
+            "subtotal",
+            "tax_total",
+            "total",
+            "status",
+            "journal_entry",
+        ]
+
+    def create(self, validated_data):
+        lines = validated_data.pop("lines", [])
+        note = DebitNote.objects.create(**validated_data)
+        for index, line in enumerate(lines, start=1):
+            line.setdefault("line_no", index)
+            DebitNoteLine.objects.create(debit_note=note, **line)
+        return note
