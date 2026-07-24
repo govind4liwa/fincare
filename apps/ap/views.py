@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from apps.accounts.views import EntityScopedMasterViewSet, scope_to_entities
 from apps.ap.models import DebitNote, PurchaseBill, Supplier
 from apps.ap.serializers import DebitNoteSerializer, PurchaseBillSerializer, SupplierSerializer
+from apps.ap.services import allocation
 from apps.ap.services.post import APError, post_bill, post_debit_note
 from apps.users.permissions import HasAnyRole
 
@@ -50,6 +51,51 @@ class PurchaseBillViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(self.get_serializer(bill).data)
+
+    @action(detail=True, methods=["post"], url_path="allocate")
+    def allocate(self, request, pk=None):
+        bill = self.get_object()
+        try:
+            allocation.allocate(
+                bill,
+                source_type=request.data.get("source_type"),
+                source_id=request.data.get("source_id"),
+                amount=request.data.get("amount"),
+                user=request.user,
+            )
+        except (ValueError, ArithmeticError, TypeError):
+            logger.exception("Allocation failed for bill %s", bill.pk)
+            return Response(
+                {
+                    "detail": "Allocation could not be applied — check the amount against the "
+                    "bill and source balances."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self.get_serializer(bill).data)
+
+    @action(detail=False, methods=["get"], url_path="allocatable-sources")
+    def allocatable_sources(self, request):
+        supplier_id = request.query_params.get("supplier")
+        if not supplier_id:
+            return Response({"detail": "supplier is required."}, status=status.HTTP_400_BAD_REQUEST)
+        supplier = scope_to_entities(Supplier.objects.filter(id=supplier_id), request.user).first()
+        if supplier is None:
+            return Response({"sources": []})
+        return Response({"sources": allocation.supplier_sources(supplier.entity, supplier)})
+
+    @action(detail=True, methods=["get"], url_path="allocations")
+    def allocations(self, request, pk=None):
+        bill = self.get_object()
+        rows = [
+            {
+                "source_type": a.source_type,
+                "amount": str(a.amount_allocated),
+                "date": a.allocation_date,
+            }
+            for a in bill.allocations.all()
+        ]
+        return Response({"allocations": rows})
 
 
 class DebitNoteViewSet(viewsets.ModelViewSet):

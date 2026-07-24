@@ -122,6 +122,7 @@ export default function InvoicesPage() {
                     <th className="px-4 py-2 text-right font-medium">Total</th>
                     <th className="px-4 py-2 text-right font-medium">Balance</th>
                     <th className="px-4 py-2 text-center font-medium">Status</th>
+                    <th className="w-10" />
                   </tr>
                 </thead>
                 <tbody>
@@ -152,6 +153,17 @@ export default function InvoicesPage() {
                         >
                           {STATUS_LABEL[inv.status]}
                         </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right">
+                        {Number(inv.balance) > 0 &&
+                        ["posted", "partially_paid"].includes(inv.status) ? (
+                          <Link
+                            href={`/invoices/${inv.id}/allocate`}
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            Allocate
+                          </Link>
+                        ) : null}
                       </td>
                     </tr>
                   ))}

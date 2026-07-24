@@ -70,3 +70,37 @@ export async function postBill(id: string): Promise<void> {
   const res = await apiFetch(`/bills/${id}/post/`, { method: "POST", body: JSON.stringify({}) });
   if (!res.ok) throw new Error(await detail(res, "Could not post the bill."));
 }
+
+export type AllocationSource = {
+  source_type: string;
+  source_id: string;
+  label: string;
+  date: string;
+  total: string;
+  available: string;
+};
+
+export type Allocation = { source_type: string; amount: string; date: string };
+
+export async function listBillSources(supplierId: string): Promise<AllocationSource[]> {
+  const res = await apiFetch(`/bills/allocatable-sources/?supplier=${supplierId}`);
+  if (!res.ok) throw new Error(`Failed to load sources (${res.status})`);
+  return ((await res.json()) as { sources: AllocationSource[] }).sources;
+}
+
+export async function listBillAllocations(id: string): Promise<Allocation[]> {
+  const res = await apiFetch(`/bills/${id}/allocations/`);
+  if (!res.ok) throw new Error(`Failed to load allocations (${res.status})`);
+  return ((await res.json()) as { allocations: Allocation[] }).allocations;
+}
+
+export async function allocateBill(
+  id: string,
+  payload: { source_type: string; source_id: string; amount: string },
+): Promise<void> {
+  const res = await apiFetch(`/bills/${id}/allocate/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not apply the allocation."));
+}

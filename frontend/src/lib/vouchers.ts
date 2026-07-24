@@ -49,6 +49,8 @@ export type VoucherCreateInput = {
   voucher_date: string;
   reference: string;
   narration: string;
+  party_type?: string;
+  party_id?: string | null;
   lines: VoucherLineInput[];
 };
 
