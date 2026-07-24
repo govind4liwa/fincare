@@ -12,6 +12,7 @@ from apps.accounts.models import Account, AccountGroup, TaxCode
 from apps.accounts.serializers import (
     AccountGroupSerializer,
     AccountSerializer,
+    AccountWriteSerializer,
     TaxCodeSerializer,
 )
 from apps.tenants.views import accessible_entity_ids
@@ -53,15 +54,20 @@ class AccountGroupViewSet(viewsets.ReadOnlyModelViewSet):
         return scope_to_entities(AccountGroup.objects.select_related("parent"), self.request.user)
 
 
-class AccountViewSet(viewsets.ReadOnlyModelViewSet):
+class AccountViewSet(EntityScopedMasterViewSet):
+    """CoA accounts: entity-scoped read for all; create/edit needs an accounting
+    role. Codes are composed by the service and immutable (see AccountWriteSerializer)."""
+
+    queryset = Account.objects.select_related("sub_group")
     serializer_class = AccountSerializer
-    permission_classes = [IsAuthenticated]
     filterset_fields = ["entity", "account_type", "sub_group", "is_active", "is_postable"]
     ordering_fields = ["code", "name"]
     ordering = ["code"]
 
-    def get_queryset(self):
-        return scope_to_entities(Account.objects.select_related("sub_group"), self.request.user)
+    def get_serializer_class(self):
+        if self.action in ("create", "update", "partial_update"):
+            return AccountWriteSerializer
+        return AccountSerializer
 
 
 class TaxCodeViewSet(viewsets.ReadOnlyModelViewSet):

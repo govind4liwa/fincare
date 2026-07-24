@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Plus, Search } from "lucide-react";
 import { useEntity } from "@/lib/entity-context";
 import { listAccounts, type Account, type Nature } from "@/lib/accounts";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -18,6 +21,7 @@ const NATURE_LABEL: Record<Nature, string> = {
 };
 
 export default function AccountsPage() {
+  const router = useRouter();
   const { selectedId, selectedEntity } = useEntity();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,14 +77,22 @@ export default function AccountsPage() {
           <h1 className="text-2xl font-semibold">Chart of Accounts</h1>
           <p className="text-sm text-muted-foreground">{scope}</p>
         </div>
-        <div className="relative w-full max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search code or name…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-8"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative w-full max-w-xs">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search code or name…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          <Link href="/accounts/new">
+            <Button size="sm" className="whitespace-nowrap">
+              <Plus className="h-4 w-4" />
+              New account
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -123,8 +135,9 @@ export default function AccountsPage() {
                         {rows.map((a) => (
                           <tr
                             key={a.id}
+                            onClick={() => router.push(`/accounts/${a.id}/edit`)}
                             className={cn(
-                              "border-b border-border/60 last:border-0",
+                              "cursor-pointer border-b border-border/60 last:border-0 hover:bg-accent/50",
                               !a.is_active && "opacity-50",
                             )}
                           >
