@@ -1,9 +1,14 @@
 """DRF serializers for the Chart of Accounts (groups, accounts, tax codes)."""
 
+import logging
+import re
+
 from rest_framework import serializers
 
 from apps.accounts.models import Account, AccountGroup, TaxCode
 from apps.accounts.services import authoring
+
+logger = logging.getLogger(__name__)
 
 
 class AccountGroupSerializer(serializers.ModelSerializer):
@@ -87,6 +92,11 @@ class AccountWriteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["code"]
 
+    def validate_charge_segment(self, value):
+        if not re.fullmatch(r"\d{3}", value or ""):
+            raise serializers.ValidationError("Charge segment must be exactly 3 digits (e.g. 004).")
+        return value
+
     def create(self, validated_data):
         try:
             return authoring.create_account(
@@ -105,7 +115,16 @@ class AccountWriteSerializer(serializers.ModelSerializer):
                 is_active=validated_data.get("is_active", True),
             )
         except authoring.AccountError as exc:
-            raise serializers.ValidationError({"non_field_errors": [str(exc)]}) from exc
+            # Log the detail server-side; return a safe, non-leaking message.
+            logger.warning("Account creation rejected: %s", exc)
+            raise serializers.ValidationError(
+                {
+                    "non_field_errors": [
+                        "Could not create the account — it may already exist, or the "
+                        "sub-group / charge segment is invalid."
+                    ]
+                }
+            ) from exc
 
     def update(self, instance, validated_data):
         # ADR-0004: an account's code is immutable. The Sub group and charge
