@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { useEntity } from "@/lib/entity-context";
 import { listAccounts, type Account } from "@/lib/accounts";
+import { listCustomers, listSuppliers, type Customer, type Supplier } from "@/lib/parties";
 import { createVoucher, postVoucher, type VoucherLineInput } from "@/lib/vouchers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,8 +31,11 @@ export default function NewVoucherPage() {
   const router = useRouter();
   const { selectedId, selectedEntity } = useEntity();
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [type, setType] = useState("receipt");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [party, setParty] = useState("");
   const [reference, setReference] = useState("");
   const [narration, setNarration] = useState("");
   const [lines, setLines] = useState<Line[]>([emptyLine(), emptyLine()]);
@@ -41,9 +45,12 @@ export default function NewVoucherPage() {
   useEffect(() => {
     if (!selectedId) return;
     let active = true;
-    listAccounts(selectedId)
-      .then((rows) => {
-        if (active) setAccounts(rows.filter((a) => a.is_postable && a.is_active));
+    Promise.all([listAccounts(selectedId), listCustomers(selectedId), listSuppliers(selectedId)])
+      .then(([accts, cust, sup]) => {
+        if (!active) return;
+        setAccounts(accts.filter((a) => a.is_postable && a.is_active));
+        setCustomers(cust.filter((c) => c.is_active));
+        setSuppliers(sup.filter((s) => s.is_active));
       })
       .catch(() => {
         if (active) setError("Couldn't load accounts.");
@@ -52,6 +59,10 @@ export default function NewVoucherPage() {
       active = false;
     };
   }, [selectedId]);
+
+  // A party (for allocation) applies to receipts (customer) and payments (supplier).
+  const partyType = type === "receipt" ? "customer" : type === "payment" ? "supplier" : "";
+  const partyOptions = type === "receipt" ? customers : type === "payment" ? suppliers : [];
 
   const totals = useMemo(() => {
     const debit = lines.reduce((s, l) => s + num(l.debit), 0);
@@ -93,6 +104,7 @@ export default function NewVoucherPage() {
         voucher_date: date,
         reference,
         narration,
+        ...(partyType && party ? { party_type: partyType, party_id: party } : {}),
         lines: filled.map<VoucherLineInput>((l) => ({
           account: l.account,
           description: l.description,
@@ -136,7 +148,14 @@ export default function NewVoucherPage() {
         <CardContent className="grid grid-cols-1 gap-4 py-5 sm:grid-cols-2 lg:grid-cols-4">
           <div className="flex flex-col gap-1.5">
             <Label>Type</Label>
-            <select value={type} onChange={(e) => setType(e.target.value)} className={fieldClass}>
+            <select
+              value={type}
+              onChange={(e) => {
+                setType(e.target.value);
+                setParty("");
+              }}
+              className={fieldClass}
+            >
               {TYPES.map(([v, l]) => (
                 <option key={v} value={v}>
                   {l}
@@ -148,6 +167,19 @@ export default function NewVoucherPage() {
             <Label>Date</Label>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
+          {partyType && (
+            <div className="flex flex-col gap-1.5">
+              <Label>{partyType === "customer" ? "Customer" : "Supplier"} (for allocation)</Label>
+              <select value={party} onChange={(e) => setParty(e.target.value)} className={fieldClass}>
+                <option value="">None</option>
+                {partyOptions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} · {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label>Reference</Label>
             <Input value={reference} onChange={(e) => setReference(e.target.value)} />

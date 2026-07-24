@@ -123,6 +123,7 @@ export default function BillsPage() {
                     <th className="px-4 py-2 text-right font-medium">Total</th>
                     <th className="px-4 py-2 text-right font-medium">Balance</th>
                     <th className="px-4 py-2 text-center font-medium">Status</th>
+                    <th className="w-10" />
                   </tr>
                 </thead>
                 <tbody>
@@ -161,6 +162,17 @@ export default function BillsPage() {
                         >
                           {STATUS_LABEL[b.status]}
                         </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right">
+                        {Number(b.balance) > 0 &&
+                        ["posted", "partially_paid"].includes(b.status) ? (
+                          <Link
+                            href={`/bills/${b.id}/allocate`}
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            Allocate
+                          </Link>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
