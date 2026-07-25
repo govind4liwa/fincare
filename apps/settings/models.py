@@ -27,6 +27,40 @@ class EntitySetting(BaseModel):
         return f"{self.entity_id}:{self.key}"
 
 
+class DriverAccountingConfig(BaseModel):
+    """Per-entity driver accounting policy — currently the Driver Receivable account.
+
+    Deliberately typed rather than an ``EntitySetting`` JSON row: the account
+    reference needs real FK integrity and ``PROTECT``, so an account that
+    settlements have posted to cannot be deleted out from under that history.
+
+    **The configured FK is itself the approval.** There is no per-account flag —
+    an account is eligible for driver receivables precisely because an entity
+    points its configuration at it. ``Staff Advances`` therefore stays a
+    ``GENERAL`` asset and ``AccountType.RECEIVABLE`` keeps its customer-AR
+    meaning. Eligibility is enforced in
+    ``apps.settings.services.driver_accounting``, not here — ``save()`` does not
+    call ``full_clean()``, so model-level validation alone would not be binding.
+    """
+
+    entity = models.OneToOneField(
+        "tenants.Entity",
+        on_delete=models.CASCADE,
+        related_name="driver_accounting_config",
+    )
+    default_receivable_account = models.ForeignKey(
+        "accounts.Account", on_delete=models.PROTECT, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["entity"]
+        verbose_name = "driver accounting config"
+        verbose_name_plural = "driver accounting config"
+
+    def __str__(self):
+        return f"{self.entity_id}: driver receivable {self.default_receivable_account_id}"
+
+
 class NumberingSeries(BaseModel):
     """Document numbering configuration per entity + document type."""
 

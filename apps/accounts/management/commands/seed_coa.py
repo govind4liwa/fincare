@@ -4,6 +4,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import Q
 
 from apps.accounts.services.seed import seed_entity_coa, seed_tax_codes
+from apps.settings.services.driver_accounting import provision_driver_accounting
 from apps.tenants.models import Entity
 
 
@@ -40,4 +41,14 @@ class Command(BaseCommand):
             if options.get("tax"):
                 tax_created = seed_tax_codes(entity)
                 line += f", +{tax_created} tax codes"
+            # Provision driver accounting once the CoA exists. Done here — the
+            # entity provisioning orchestration point — rather than inside the
+            # seeder, which would make the account template module depend on
+            # settings. Idempotent; silent when no unambiguous account matches.
+            config = provision_driver_accounting(entity)
+            line += (
+                f", driver receivable {config.default_receivable_account.code}"
+                if config
+                else ", driver receivable NOT configured"
+            )
             self.stdout.write(self.style.SUCCESS(line))

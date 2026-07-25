@@ -10,14 +10,17 @@ import {
   FileMinus2,
   FilePlus2,
   FileText,
+  HandCoins,
   Landmark,
   LayoutDashboard,
   LogOut,
   Receipt,
   ReceiptText,
   Scale,
+  Settings,
   Truck,
   Users,
+  Wallet,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { EntityProvider } from "@/lib/entity-context";
@@ -34,10 +37,13 @@ const NAV = [
   { href: "/debit-notes", label: "Debit Notes", icon: FilePlus2 },
   { href: "/parties", label: "Customers & Suppliers", icon: Users },
   { href: "/fleet", label: "Fleet & Drivers", icon: Truck },
+  { href: "/advances", label: "Driver Advances", icon: Wallet },
+  { href: "/settlements", label: "Driver Settlements", icon: HandCoins },
   { href: "/loans", label: "Vehicle Loans", icon: CreditCard },
   { href: "/banking", label: "Bank Accounts", icon: Landmark },
   { href: "/reconcile", label: "Reconciliation", icon: Scale },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
