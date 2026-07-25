@@ -20,6 +20,10 @@ from apps.core.services import sequences
 from apps.drivers.models import Advance, DriverDocStatus, Settlement
 from apps.ledger.models import JournalEntry, JournalLine
 from apps.ledger.services.posting import PostingError, post_journal_entry
+from apps.settings.services.driver_accounting import (
+    DriverAccountingConfigError,
+    resolve_receivable_account,
+)
 
 TWO_PLACES = Decimal("0.01")
 ZERO = Decimal("0.00")
@@ -118,28 +122,33 @@ def post_advance(advance: Advance, *, user=None):
     return advance
 
 
-def _validated_receivable_account(settlement: Settlement):
-    """The account a negative net is parked on, checked before it is posted to.
+def _resolve_receivable_account(settlement: Settlement):
+    """The entity's configured Driver Receivable account for a negative net.
 
-    Deliberately not defaulted from ``pay_account``: that is a bank account, and
-    booking a shortfall there would assert a receipt that never happened. The
-    account is validated by *nature* rather than a hardcoded code, so an entity
-    may use a dedicated Driver Receivable or an existing staff-advances style
-    asset account per its own chart-of-accounts policy.
+    The account is never chosen per-settlement: each entity configures exactly
+    one (``settings.DriverAccountingConfig``), and configuring it *is* the
+    approval. A settlement may carry the account for historical audit, but it
+    must equal the configured one — any other account, however plausible, is
+    rejected. It is never defaulted from ``pay_account``, which is a bank
+    account: booking a shortfall there would assert a receipt that never
+    happened.
     """
-    account = settlement.driver_receivable_account
-    if account is None:
+    try:
+        configured = resolve_receivable_account(settlement.entity)
+    except DriverAccountingConfigError as exc:
+        raise DriverError(str(exc)) from exc
+
+    supplied = settlement.driver_receivable_account
+    if supplied is not None and supplied.id != configured.id:
         raise DriverError(
-            "A settlement whose deductions exceed gross needs a driver receivable "
-            "account — the shortfall is money owed by the driver, not a bank receipt."
+            "Driver receivable account does not match the entity's configured "
+            f"account ({configured.code})."
         )
-    if account.entity_id != settlement.entity_id:
-        raise DriverError("Driver receivable account belongs to a different entity.")
-    if not account.is_active or not account.is_postable:
-        raise DriverError("Driver receivable account must be active and postable.")
-    if account.sub_group.nature != "asset":
-        raise DriverError("Driver receivable account must be an asset account.")
-    return account
+    if supplied is None:
+        # Persist what was actually used, so later configuration changes never
+        # rewrite the history of this posting.
+        settlement.driver_receivable_account = configured
+    return configured
 
 
 @transaction.atomic
@@ -217,6 +226,13 @@ def post_settlement(settlement: Settlement, *, user=None):
                 "driver_id": settlement.driver_id,
             }
         )
+    if net >= ZERO and settlement.driver_receivable_account_id is not None:
+        # Nothing is owed, so a receivable account is meaningless here. Rejecting
+        # beats ignoring: silently dropping it would let an operator believe a
+        # receivable had been configured on this settlement.
+        raise DriverError(
+            "A driver receivable account may only be set when deductions exceed gross."
+        )
     if net > ZERO:
         # Money leaves the bank to the driver.
         rows.append(
@@ -233,7 +249,7 @@ def post_settlement(settlement: Settlement, *, user=None):
         # (DR Bank / CR Driver Receivable).
         rows.append(
             {
-                "account": _validated_receivable_account(settlement),
+                "account": _resolve_receivable_account(settlement),
                 "debit": -net,
                 "description": f"Amount due from driver ({settlement.driver.code})",
                 "driver_id": settlement.driver_id,

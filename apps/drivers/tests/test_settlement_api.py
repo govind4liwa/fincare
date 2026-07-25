@@ -19,6 +19,7 @@ from apps.accounts.models import Account
 from apps.accounts.services.seed import seed_entity_coa
 from apps.drivers.models import Advance, DriverDocStatus, Settlement
 from apps.ledger.models import EntryStatus
+from apps.settings.models import DriverAccountingConfig
 from apps.tenants.models import Entity, UserEntityMembership
 
 pytestmark = pytest.mark.django_db
@@ -278,7 +279,8 @@ def test_zero_net_writes_neither_bank_nor_receivable_line(entity, driver, bank_e
     assert je.lines.count() == 2  # gross + the single deduction, nothing else
 
 
-def test_negative_net_rejected_without_a_receivable_account(entity, driver, bank_enbd, acct):
+def test_negative_net_resolves_the_account_from_configuration(entity, driver, bank_enbd, acct):
+    """Omitting the account is normal: the entity's configuration supplies it."""
     client = _superuser()
     payload = _settlement_payload(
         entity,
@@ -290,9 +292,135 @@ def test_negative_net_rejected_without_a_receivable_account(entity, driver, bank
         negative=True,
         receivable=None,  # omit it entirely
     )
+    created = client.post("/api/v1/driver-settlements/", payload, format="json")
+    assert created.status_code == 201, created.content
+    assert created.data["driver_receivable_account"] is None
+
+    posted = client.post(
+        f"/api/v1/driver-settlements/{created.data['id']}/post/", {}, format="json"
+    )
+    assert posted.status_code == 200, posted.content
+
+    settlement = Settlement.objects.get(id=created.data["id"])
+    # Persisted, so a later configuration change cannot rewrite this posting.
+    assert settlement.driver_receivable_account_id == acct(STAFF_ADVANCES).id
+    assert settlement.journal_entry.lines.get(account=acct(STAFF_ADVANCES)).debit == D("500.00")
+
+
+def test_negative_net_rejected_when_entity_has_no_configuration(entity, driver, bank_enbd, acct):
+    """Without a configured account there is no approval to post a receivable."""
+    DriverAccountingConfig.objects.filter(entity=entity).delete()
+    client = _superuser()
+    payload = _settlement_payload(
+        entity,
+        driver,
+        acct,
+        bank_enbd,
+        gross="1000",
+        deductions=[{"kind": "fine", "account": str(acct(SALIK).id), "amount": "1500"}],
+        negative=True,
+        receivable=None,
+    )
     res = client.post("/api/v1/driver-settlements/", payload, format="json")
     assert res.status_code == 400
+    assert "Driver Receivable account is not configured for this entity." in str(
+        res.data["driver_receivable_account"]
+    )
+
+
+def test_posting_rejects_missing_configuration_even_bypassing_the_serializer(
+    entity, driver, bank_enbd, acct
+):
+    """The posting service is the authority, not the serializer."""
+    from apps.drivers.services.post import DriverError, post_settlement
+
+    settlement = Settlement.objects.create(
+        entity=entity,
+        driver=driver,
+        period_start=PERIOD_START,
+        period_end=PERIOD_END,
+        settlement_date=ON,
+        gross_amount=D("1000"),
+        gross_account=acct(DRIVER_PAYOUT),
+        pay_account=bank_enbd,
+        allows_negative_net=True,
+    )
+    settlement.deductions.create(kind="fine", account=acct(SALIK), amount=D("1500"))
+    DriverAccountingConfig.objects.filter(entity=entity).delete()
+
+    with pytest.raises(DriverError, match="not configured for this entity"):
+        post_settlement(settlement)
+    assert settlement.journal_entry_id is None
+
+
+def test_receivable_account_must_match_configuration(entity, driver, bank_enbd, acct):
+    """Another eligible asset account is still refused — only the configured one posts."""
+    other = acct("101-100-120-006")  # Deposits (RTA, DEWA, Rent) — an eligible asset
+    payload = _settlement_payload(
+        entity,
+        driver,
+        acct,
+        bank_enbd,
+        gross="1000",
+        deductions=[{"kind": "fine", "account": str(acct(SALIK).id), "amount": "1500"}],
+        negative=True,
+        receivable=str(other.id),
+    )
+    res = _superuser().post("/api/v1/driver-settlements/", payload, format="json")
+    assert res.status_code == 400
+    assert STAFF_ADVANCES in str(res.data["driver_receivable_account"])
+
+
+def test_receivable_account_rejected_on_positive_net(entity, driver, bank_enbd, acct):
+    """Nothing is owed, so the field must be empty rather than quietly ignored."""
+    payload = _settlement_payload(
+        entity,
+        driver,
+        acct,
+        bank_enbd,
+        gross="5000",
+        deductions=[{"kind": "fine", "account": str(acct(SALIK).id), "amount": "100"}],
+        receivable=str(acct(STAFF_ADVANCES).id),
+    )
+    res = _superuser().post("/api/v1/driver-settlements/", payload, format="json")
+    assert res.status_code == 400
     assert "driver_receivable_account" in res.data
+
+
+def test_receivable_account_rejected_on_zero_net(entity, driver, bank_enbd, acct):
+    payload = _settlement_payload(
+        entity,
+        driver,
+        acct,
+        bank_enbd,
+        gross="1000",
+        deductions=[{"kind": "fine", "account": str(acct(SALIK).id), "amount": "1000"}],
+        receivable=str(acct(STAFF_ADVANCES).id),
+    )
+    res = _superuser().post("/api/v1/driver-settlements/", payload, format="json")
+    assert res.status_code == 400
+    assert "driver_receivable_account" in res.data
+
+
+def test_posting_rejects_receivable_account_on_non_negative_net(entity, driver, bank_enbd, acct):
+    """Same rule at the service layer, where the serializer cannot be relied on."""
+    from apps.drivers.services.post import DriverError, post_settlement
+
+    settlement = Settlement.objects.create(
+        entity=entity,
+        driver=driver,
+        period_start=PERIOD_START,
+        period_end=PERIOD_END,
+        settlement_date=ON,
+        gross_amount=D("1000"),
+        gross_account=acct(DRIVER_PAYOUT),
+        pay_account=bank_enbd,
+        driver_receivable_account=acct(STAFF_ADVANCES),
+    )
+    settlement.deductions.create(kind="fine", account=acct(SALIK), amount=D("100"))
+    with pytest.raises(DriverError, match="only be set when deductions exceed gross"):
+        post_settlement(settlement)
+    assert settlement.journal_entry_id is None
 
 
 def test_receivable_account_must_belong_to_the_entity(entity, driver, bank_enbd, acct):
@@ -333,10 +461,8 @@ def test_receivable_account_must_be_an_asset(entity, driver, bank_enbd, acct):
     assert "driver_receivable_account" in res.data
 
 
-def test_receivable_account_must_be_postable(entity, driver, bank_enbd, acct):
-    blocked = acct(STAFF_ADVANCES)
-    blocked.is_postable = False
-    blocked.save(update_fields=["is_postable"])
+def test_bank_account_cannot_be_used_as_the_receivable(entity, driver, bank_enbd, acct):
+    """The shortfall must never be booked to bank — that would assert a receipt."""
     payload = _settlement_payload(
         entity,
         driver,
@@ -345,6 +471,7 @@ def test_receivable_account_must_be_postable(entity, driver, bank_enbd, acct):
         gross="1000",
         deductions=[{"kind": "fine", "account": str(acct(SALIK).id), "amount": "1500"}],
         negative=True,
+        receivable=str(bank_enbd.gl_account.id),
     )
     res = _superuser().post("/api/v1/driver-settlements/", payload, format="json")
     assert res.status_code == 400

@@ -3,6 +3,7 @@
 from rest_framework import serializers
 
 from apps.drivers.models import Advance, Driver, Settlement, SettlementDeduction
+from apps.settings.services.driver_accounting import get_config
 
 
 class DriverSerializer(serializers.ModelSerializer):
@@ -129,34 +130,43 @@ class SettlementSerializer(serializers.ModelSerializer):
         receivable = attrs.get("driver_receivable_account") or getattr(
             self.instance, "driver_receivable_account", None
         )
-        allows_negative = attrs.get("allows_negative_net")
-        if allows_negative is None:
-            allows_negative = getattr(self.instance, "allows_negative_net", False)
+        # The receivable account is entity configuration, not a per-settlement
+        # choice: it may be omitted (resolved at posting) or supplied, but only
+        # ever the configured one. Mirrors the posting service, which is the
+        # authority.
         gross = attrs.get("gross_amount")
         lines = attrs.get("deductions")
-        if gross is not None and lines is not None and allows_negative:
-            total = sum((line.get("amount") or 0) for line in lines)
-            if total > gross and not receivable:
+        negative = None
+        if gross is not None and lines is not None:
+            negative = sum((line.get("amount") or 0) for line in lines) > gross
+
+        if negative is False and receivable is not None:
+            raise serializers.ValidationError(
+                {
+                    "driver_receivable_account": (
+                        "Only allowed when deductions exceed gross — nothing is owed by "
+                        "the driver otherwise."
+                    )
+                }
+            )
+        if entity is not None and negative:
+            configured = get_config(entity)
+            if configured is None:
                 raise serializers.ValidationError(
                     {
                         "driver_receivable_account": (
-                            "Required when deductions exceed gross — the shortfall is an "
-                            "amount due from the driver, cleared later by a separate receipt."
+                            "Driver Receivable account is not configured for this entity."
                         )
                     }
                 )
-        if receivable is not None:
-            if entity is not None and receivable.entity_id != entity.id:
+            if receivable is not None and receivable.id != configured.default_receivable_account_id:
                 raise serializers.ValidationError(
-                    {"driver_receivable_account": "Account belongs to a different entity."}
-                )
-            if not receivable.is_active or not receivable.is_postable:
-                raise serializers.ValidationError(
-                    {"driver_receivable_account": "Account must be active and postable."}
-                )
-            if receivable.sub_group.nature != "asset":
-                raise serializers.ValidationError(
-                    {"driver_receivable_account": "Account must be an asset account."}
+                    {
+                        "driver_receivable_account": (
+                            "Must be the entity's configured Driver Receivable account "
+                            f"({configured.default_receivable_account.code})."
+                        )
+                    }
                 )
         return attrs
 
