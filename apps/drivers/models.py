@@ -110,6 +110,10 @@ class Settlement(BaseModel):
         CR  each deduction account               = deduction amount
         CR  bank (pay account)                   = net   (net > 0 → pay driver)
         DR  bank (pay account)                   = -net  (net < 0 → driver pays in)
+
+    The net-negative branch only runs when ``allows_negative_net`` is set: by
+    default a settlement whose deductions exceed gross is rejected rather than
+    silently inverted into money owed *by* the driver.
     """
 
     entity = models.ForeignKey(
@@ -132,6 +136,9 @@ class Settlement(BaseModel):
     )
     total_deductions = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     net_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    # Opt-in: permits deductions to exceed gross, so the driver pays the
+    # shortfall in. Off by default — see the class docstring.
+    allows_negative_net = models.BooleanField(default=False)
     status = models.CharField(
         max_length=12, choices=DriverDocStatus.choices, default=DriverDocStatus.DRAFT, db_index=True
     )

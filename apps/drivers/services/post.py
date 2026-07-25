@@ -126,11 +126,38 @@ def post_settlement(settlement: Settlement, *, user=None):
     if gross <= ZERO:
         raise DriverError("Gross amount must be positive.")
 
-    deductions = list(settlement.deductions.select_related("account").all())
+    deductions = list(settlement.deductions.select_related("account", "advance").all())
+    if any(_q(d.amount) <= ZERO for d in deductions):
+        raise DriverError("Deduction amounts must be positive.")
     total_ded = sum((_q(d.amount) for d in deductions), ZERO)
-    if total_ded > gross:
+    if total_ded > gross and not settlement.allows_negative_net:
         raise DriverError(f"Deductions {total_ded} exceed gross {gross}.")
     net = _q(gross - total_ded)
+
+    # Validate every advance recovery *before* anything is written: the advance
+    # must belong to this driver/entity, be posted, and have enough left on it.
+    # Lines are aggregated per advance so two lines cannot jointly over-recover.
+    recovery_by_advance: dict = {}
+    advances_by_id: dict = {}
+    for d in deductions:
+        if not d.advance_id:
+            continue
+        adv = d.advance
+        if adv is None:
+            raise DriverError("Settlement deduction references a missing advance.")
+        if adv.driver_id != settlement.driver_id or adv.entity_id != settlement.entity_id:
+            raise DriverError("Advance belongs to a different driver or entity.")
+        if adv.status != DriverDocStatus.POSTED:
+            raise DriverError("Only a posted advance can be recovered.")
+        advances_by_id[adv.id] = adv
+        recovery_by_advance[adv.id] = recovery_by_advance.get(adv.id, ZERO) + _q(d.amount)
+    for advance_id, recovered in recovery_by_advance.items():
+        adv = advances_by_id[advance_id]
+        if recovered > _q(adv.balance):
+            raise DriverError(
+                f"Recovery {recovered} exceeds the outstanding balance "
+                f"{_q(adv.balance)} on advance {adv.advance_no or advance_id}."
+            )
 
     rows = [
         {
