@@ -126,7 +126,7 @@ def post_settlement(settlement: Settlement, *, user=None):
     if gross <= ZERO:
         raise DriverError("Gross amount must be positive.")
 
-    deductions = list(settlement.deductions.select_related("account", "advance").all())
+    deductions = list(settlement.deductions.select_related("account").all())
     if any(_q(d.amount) <= ZERO for d in deductions):
         raise DriverError("Deduction amounts must be positive.")
     total_ded = sum((_q(d.amount) for d in deductions), ZERO)
@@ -134,30 +134,46 @@ def post_settlement(settlement: Settlement, *, user=None):
         raise DriverError(f"Deductions {total_ded} exceed gross {gross}.")
     net = _q(gross - total_ded)
 
-    # Validate every advance recovery *before* anything is written: the advance
-    # must belong to this driver/entity, be posted, and have enough left on it.
-    # Lines are aggregated per advance so two lines cannot jointly over-recover.
+    # --- advance recovery: locked, aggregated, validated before any write ------
+    #
+    # Aggregate first so several lines against one advance are checked as a whole,
+    # then re-read those advances FOR UPDATE. The lock is what makes the balance
+    # check safe: two settlements recovering the same advance concurrently would
+    # otherwise both validate against the same stale balance and jointly
+    # over-recover it. Rows are locked in primary-key order so two posts touching
+    # the same set of advances always acquire them in the same sequence, which
+    # avoids deadlocking each other.
+    #
+    # The `deductions` rows are deliberately NOT select_related("advance") — a
+    # prefetched copy would be a pre-lock snapshot, exactly the stale read this
+    # guards against.
     recovery_by_advance: dict = {}
-    advances_by_id: dict = {}
     for d in deductions:
-        if not d.advance_id:
-            continue
-        adv = d.advance
-        if adv is None:
-            raise DriverError("Settlement deduction references a missing advance.")
-        if adv.driver_id != settlement.driver_id or adv.entity_id != settlement.entity_id:
-            raise DriverError("Advance belongs to a different driver or entity.")
-        if adv.status != DriverDocStatus.POSTED:
-            raise DriverError("Only a posted advance can be recovered.")
-        advances_by_id[adv.id] = adv
-        recovery_by_advance[adv.id] = recovery_by_advance.get(adv.id, ZERO) + _q(d.amount)
-    for advance_id, recovered in recovery_by_advance.items():
-        adv = advances_by_id[advance_id]
-        if recovered > _q(adv.balance):
-            raise DriverError(
-                f"Recovery {recovered} exceeds the outstanding balance "
-                f"{_q(adv.balance)} on advance {adv.advance_no or advance_id}."
+        if d.advance_id:
+            recovery_by_advance[d.advance_id] = recovery_by_advance.get(d.advance_id, ZERO) + _q(
+                d.amount
             )
+
+    locked_advances: dict = {}
+    if recovery_by_advance:
+        advance_ids = sorted(recovery_by_advance)
+        locked_advances = {
+            adv.id: adv
+            for adv in Advance.objects.select_for_update().filter(id__in=advance_ids).order_by("id")
+        }
+        if len(locked_advances) != len(advance_ids):
+            raise DriverError("Settlement deduction references a missing advance.")
+        for advance_id in advance_ids:
+            adv = locked_advances[advance_id]
+            if adv.driver_id != settlement.driver_id or adv.entity_id != settlement.entity_id:
+                raise DriverError("Advance belongs to a different driver or entity.")
+            if adv.status != DriverDocStatus.POSTED:
+                raise DriverError("Only a posted advance can be recovered.")
+            if recovery_by_advance[advance_id] > _q(adv.balance):
+                raise DriverError(
+                    f"Recovery {recovery_by_advance[advance_id]} exceeds the outstanding "
+                    f"balance {_q(adv.balance)} on advance {adv.advance_no or advance_id}."
+                )
 
     rows = [
         {
@@ -194,15 +210,13 @@ def post_settlement(settlement: Settlement, *, user=None):
         user=user,
     )
 
-    # Recover advances linked to deduction lines.
-    for d in deductions:
-        if d.advance_id:
-            adv = d.advance
-            if adv is None:
-                raise DriverError("Settlement deduction references a missing advance.")
-            adv.recovered_amount = _q(adv.recovered_amount + _q(d.amount))
-            adv.balance = _q(adv.amount - adv.recovered_amount)
-            adv.save(update_fields=["recovered_amount", "balance", "updated_at"])
+    # Apply the recovery to the rows locked above (never the prefetched copies),
+    # using the per-advance aggregate so split lines are written once.
+    for advance_id, recovered in recovery_by_advance.items():
+        adv = locked_advances[advance_id]
+        adv.recovered_amount = _q(adv.recovered_amount + recovered)
+        adv.balance = _q(adv.amount - adv.recovered_amount)
+        adv.save(update_fields=["recovered_amount", "balance", "updated_at"])
 
     settlement.total_deductions = total_ded
     settlement.net_amount = net
