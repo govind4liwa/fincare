@@ -2,14 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Check, Lock, Plus, Unlock } from "lucide-react";
 import { useEntity } from "@/lib/entity-context";
 import {
   autoMatch,
+  completeReconciliation,
   createReconciliation,
   listBankAccounts,
   listReconciliations,
   listStatements,
+  manualMatch,
+  reopenReconciliation,
+  unmatch,
   type BankAccount,
   type BankStatement,
   type Reconciliation,
@@ -33,7 +37,9 @@ export default function ReconcilePage() {
   const [reconDate, setReconDate] = useState(today);
   const [currentReconId, setCurrentReconId] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [running, setRunning] = useState(false);
+  const [selectedStmt, setSelectedStmt] = useState<string | null>(null);
+  const [selectedGl, setSelectedGl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -68,19 +74,37 @@ export default function ReconcilePage() {
     };
   }, [bankAccount]);
 
-  function pickStatement(value: string) {
-    setStatementId(value);
+  function reset() {
+    setStatementId("");
     setCurrentReconId(null);
     setWorkspace(null);
+    setSelectedStmt(null);
+    setSelectedGl(null);
+  }
+
+  function applyWorkspace(ws: Workspace) {
+    setWorkspace(ws);
+    setSelectedStmt(null);
+    setSelectedGl(null);
+  }
+
+  async function run<T extends Workspace>(fn: () => Promise<T>) {
+    setBusy(true);
+    setError("");
+    try {
+      applyWorkspace(await fn());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function reconcile() {
     if (!statementId) return setError("Select a statement.");
-    setRunning(true);
-    setError("");
-    try {
-      let rid = currentReconId ?? recons.find((r) => r.statement === statementId)?.id ?? null;
-      if (!rid) {
+    let rid = currentReconId ?? recons.find((r) => r.statement === statementId)?.id ?? null;
+    if (!rid) {
+      try {
         rid = (
           await createReconciliation({
             entity: selectedId!,
@@ -89,14 +113,12 @@ export default function ReconcilePage() {
             recon_date: reconDate,
           })
         ).id;
+      } catch (e) {
+        return setError(e instanceof Error ? e.message : "Could not create the reconciliation.");
       }
-      setCurrentReconId(rid);
-      setWorkspace(await autoMatch(rid, { date_window_days: 3 }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
-    } finally {
-      setRunning(false);
     }
+    setCurrentReconId(rid);
+    await run(() => autoMatch(rid!, { date_window_days: 3 }));
   }
 
   const fieldClass =
@@ -113,7 +135,17 @@ export default function ReconcilePage() {
   }
 
   const totals = workspace?.totals;
-  const reconciled = totals && Number(totals.difference) === 0 && totals.unmatched_count === 0;
+  const locked = workspace?.reconciliation.status === "completed";
+  const readyToComplete = totals && Number(totals.difference) === 0 && totals.unmatched_count === 0;
+
+  const stmtLine = workspace?.unmatched_lines.find((l) => l.id === selectedStmt);
+  const glLine = workspace?.gl_lines.find((l) => l.id === selectedGl);
+  const compatible =
+    stmtLine &&
+    glLine &&
+    !glLine.is_matched &&
+    ((Number(stmtLine.deposit) > 0 && Number(glLine.debit) === Number(stmtLine.deposit)) ||
+      (Number(stmtLine.withdrawal) > 0 && Number(glLine.credit) === Number(stmtLine.withdrawal)));
 
   return (
     <div className="flex flex-col gap-6">
@@ -142,7 +174,7 @@ export default function ReconcilePage() {
               onChange={(e) => {
                 const value = e.target.value;
                 setBankAccount(value);
-                pickStatement("");
+                reset();
                 if (!value) {
                   setStatements([]);
                   setRecons([]);
@@ -162,7 +194,11 @@ export default function ReconcilePage() {
             <label className="text-sm font-medium">Statement</label>
             <select
               value={statementId}
-              onChange={(e) => pickStatement(e.target.value)}
+              onChange={(e) => {
+                setStatementId(e.target.value);
+                setCurrentReconId(null);
+                setWorkspace(null);
+              }}
               className={fieldClass}
               disabled={!bankAccount}
             >
@@ -183,8 +219,8 @@ export default function ReconcilePage() {
               className={fieldClass}
             />
           </div>
-          <Button size="sm" onClick={reconcile} disabled={running || !statementId}>
-            {running ? "Matching…" : "Run auto-match"}
+          <Button size="sm" onClick={reconcile} disabled={busy || !statementId || locked}>
+            {busy ? "Working…" : "Run auto-match"}
           </Button>
         </CardContent>
       </Card>
@@ -193,6 +229,36 @@ export default function ReconcilePage() {
 
       {totals && (
         <>
+          {/* Status / completion controls */}
+          {locked ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
+              <span className="inline-flex items-center gap-2 font-medium">
+                <Lock className="h-4 w-4" /> Completed and locked.
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => run(() => reopenReconciliation(currentReconId!))}
+                disabled={busy}
+              >
+                <Unlock className="h-4 w-4" /> Reopen
+              </Button>
+            </div>
+          ) : readyToComplete ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
+              <span className="font-medium">
+                Fully matched and the balances agree — ready to complete.
+              </span>
+              <Button
+                size="sm"
+                onClick={() => run(() => completeReconciliation(currentReconId!))}
+                disabled={busy}
+              >
+                <Check className="h-4 w-4" /> Complete &amp; lock
+              </Button>
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <SummaryCard label="Statement balance" value={money(totals.statement_balance)} />
             <SummaryCard label="GL balance" value={money(totals.gl_balance)} />
@@ -207,11 +273,38 @@ export default function ReconcilePage() {
             />
           </div>
 
-          {reconciled && (
-            <p className="rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
-              Fully matched and the balances agree. (Marking a reconciliation “complete” arrives in a
-              later slice.)
-            </p>
+          {/* Manual match bar */}
+          {!locked && (selectedStmt || selectedGl) && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm">
+              <span className="text-muted-foreground">
+                {selectedStmt ? "Statement line selected" : "Pick a statement line"} ·{" "}
+                {selectedGl ? "GL line selected" : "pick a GL line"}
+                {stmtLine && glLine && !compatible && (
+                  <span className="ml-2 text-amber-600 dark:text-amber-400">
+                    (amounts/sides don’t correspond)
+                  </span>
+                )}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedStmt(null);
+                    setSelectedGl(null);
+                  }}
+                >
+                  Clear
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={busy || !compatible}
+                  onClick={() => run(() => manualMatch(currentReconId!, selectedStmt!, selectedGl!))}
+                >
+                  Match selected
+                </Button>
+              </div>
+            </div>
           )}
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -223,7 +316,15 @@ export default function ReconcilePage() {
                   <Head cols={["Date", "Description", "Deposit", "Withdrawal"]} />
                   <tbody>
                     {workspace!.unmatched_lines.map((l) => (
-                      <tr key={l.id} className="border-b border-border/60 last:border-0">
+                      <tr
+                        key={l.id}
+                        onClick={() => !locked && setSelectedStmt(l.id === selectedStmt ? null : l.id!)}
+                        className={cn(
+                          "border-b border-border/60 last:border-0",
+                          !locked && "cursor-pointer hover:bg-accent/50",
+                          selectedStmt === l.id && "bg-primary/10",
+                        )}
+                      >
                         <td className="whitespace-nowrap px-3 py-1.5">{l.txn_date}</td>
                         <td className="px-3 py-1.5 text-muted-foreground">
                           {l.description || l.reference || "—"}
@@ -248,29 +349,40 @@ export default function ReconcilePage() {
                 <table className="w-full text-sm">
                   <Head cols={["Date", "Entry", "Debit", "Credit", ""]} />
                   <tbody>
-                    {workspace!.gl_lines.map((l) => (
-                      <tr key={l.id} className="border-b border-border/60 last:border-0">
-                        <td className="whitespace-nowrap px-3 py-1.5">{l.entry_date}</td>
-                        <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground">
-                          {l.entry_no}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">
-                          {Number(l.debit) > 0 ? money(l.debit) : "—"}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">
-                          {Number(l.credit) > 0 ? money(l.credit) : "—"}
-                        </td>
-                        <td className="px-3 py-1.5 text-center">
-                          {l.is_matched ? (
-                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                              matched
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
+                    {workspace!.gl_lines.map((l) => {
+                      const selectable = !locked && !l.is_matched;
+                      return (
+                        <tr
+                          key={l.id}
+                          onClick={() => selectable && setSelectedGl(l.id === selectedGl ? null : l.id)}
+                          className={cn(
+                            "border-b border-border/60 last:border-0",
+                            selectable && "cursor-pointer hover:bg-accent/50",
+                            selectedGl === l.id && "bg-primary/10",
                           )}
-                        </td>
-                      </tr>
-                    ))}
+                        >
+                          <td className="whitespace-nowrap px-3 py-1.5">{l.entry_date}</td>
+                          <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground">
+                            {l.entry_no}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {Number(l.debit) > 0 ? money(l.debit) : "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {Number(l.credit) > 0 ? money(l.credit) : "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-center">
+                            {l.is_matched ? (
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                                matched
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
@@ -280,7 +392,7 @@ export default function ReconcilePage() {
           {workspace!.matched.length > 0 && (
             <TableCard title={`Matched (${workspace!.matched.length})`}>
               <table className="w-full text-sm">
-                <Head cols={["Stmt date", "Statement line", "GL entry", "Amount", "Match"]} />
+                <Head cols={["Stmt date", "Statement line", "GL entry", "Amount", "Match", ""]} />
                 <tbody>
                   {workspace!.matched.map((m) => (
                     <tr key={m.id} className="border-b border-border/60 last:border-0">
@@ -294,6 +406,18 @@ export default function ReconcilePage() {
                       <td className="px-3 py-1.5 text-right tabular-nums">{money(m.amount)}</td>
                       <td className="px-3 py-1.5 text-center text-xs capitalize text-muted-foreground">
                         {m.match_type}
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        {!locked && (
+                          <button
+                            type="button"
+                            onClick={() => run(() => unmatch(currentReconId!, m.id))}
+                            disabled={busy}
+                            className="text-xs font-medium text-muted-foreground hover:text-destructive disabled:opacity-40"
+                          >
+                            Unmatch
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -344,7 +468,11 @@ function Head({ cols }: { cols: string[] }) {
         {cols.map((c, i) => (
           <th
             key={i}
-            className={cn("px-3 py-2 font-medium", (c === "Debit" || c === "Credit" || c === "Deposit" || c === "Withdrawal" || c === "Amount") && "text-right")}
+            className={cn(
+              "px-3 py-2 font-medium",
+              (c === "Debit" || c === "Credit" || c === "Deposit" || c === "Withdrawal" || c === "Amount") &&
+                "text-right",
+            )}
           >
             {c}
           </th>
