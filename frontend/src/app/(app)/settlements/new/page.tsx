@@ -11,10 +11,12 @@ import { listDrivers, listVehicles, type Driver, type Vehicle } from "@/lib/flee
 import {
   DEDUCTION_KINDS,
   createSettlement,
+  getDriverAccountingConfig,
   listOutstandingAdvances,
   postSettlement,
   type Advance,
   type DeductionKind,
+  type DriverAccountingConfig,
 } from "@/lib/settlements";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +40,8 @@ const emptyLine = (): Line => ({
   description: "",
 });
 const num = (v: string) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+/** Shown verbatim wherever an unconfigured entity blocks a negative net. */
+const NOT_CONFIGURED = "Driver Receivable account is not configured for this entity.";
 const money = (n: number) =>
   n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => new Date().toISOString().slice(0, 10);
@@ -59,7 +63,8 @@ export default function NewSettlementPage() {
   const [gross, setGross] = useState("");
   const [grossAccount, setGrossAccount] = useState("");
   const [payAccount, setPayAccount] = useState("");
-  const [receivableAccount, setReceivableAccount] = useState("");
+  // The receivable account is entity configuration, never a per-settlement pick.
+  const [receivableConfig, setReceivableConfig] = useState<DriverAccountingConfig | null>(null);
   const [allowNegative, setAllowNegative] = useState(false);
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [saving, setSaving] = useState(false);
@@ -73,13 +78,15 @@ export default function NewSettlementPage() {
       listVehicles(selectedId),
       listAccounts(selectedId),
       listBankAccounts(selectedId),
+      getDriverAccountingConfig(selectedId),
     ])
-      .then(([drv, veh, accts, bnk]) => {
+      .then(([drv, veh, accts, bnk, cfg]) => {
         if (!active) return;
         setDrivers(drv.filter((d) => d.is_active));
         setVehicles(veh.filter((v) => v.is_active));
         setAccounts(accts.filter((a) => a.is_postable && a.is_active));
         setBanks(bnk.filter((b) => b.is_active));
+        setReceivableConfig(cfg);
       })
       .catch(() => {
         if (active) setError("Couldn't load drivers, accounts, or bank accounts.");
@@ -150,9 +157,7 @@ export default function NewSettlementPage() {
           "record the shortfall as a receivable.",
       );
     }
-    if (totals.net < 0 && !receivableAccount) {
-      return setError("Select the driver receivable account to hold the amount due.");
-    }
+    if (totals.net < 0 && !receivableConfig) return setError(NOT_CONFIGURED);
     if (overRecovered) return setError("A recovery exceeds its advance's outstanding balance.");
 
     setSaving(true);
@@ -167,7 +172,9 @@ export default function NewSettlementPage() {
         gross_amount: gross,
         gross_account: grossAccount,
         pay_account: payAccount,
-        driver_receivable_account: totals.net < 0 ? receivableAccount : null,
+        // Left null on purpose: posting resolves it from the entity
+        // configuration and records what it actually used.
+        driver_receivable_account: null,
         allows_negative_net: allowNegative,
         deductions: filled.map((l) => ({
           kind: l.kind,
@@ -451,24 +458,29 @@ export default function NewSettlementPage() {
         </Card>
         <div className="flex flex-col items-end gap-3">
           {totals.net < 0 && (
-            <div className="flex flex-col gap-1.5">
-              <Label>
-                Driver receivable account<span className="text-destructive"> *</span>
-              </Label>
-              <select
-                value={receivableAccount}
-                onChange={(e) => setReceivableAccount(e.target.value)}
-                className={cn(fieldClass, "min-w-72")}
-              >
-                <option value="">Select…</option>
-                {accounts
-                  .filter((a) => a.nature === "asset")
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.code} · {a.name}
-                    </option>
-                  ))}
-              </select>
+            <div className="flex min-w-72 flex-col gap-1.5">
+              <Label>Driver receivable account</Label>
+              {receivableConfig ? (
+                <>
+                  <div
+                    className={cn(
+                      fieldClass,
+                      "flex items-center bg-muted/50 text-muted-foreground",
+                    )}
+                  >
+                    {receivableConfig.account_code} · {receivableConfig.account_name}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    This entity&rsquo;s configured Driver Receivable account. It is set once in
+                    entity configuration, not chosen per settlement.
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-destructive">
+                  {NOT_CONFIGURED} Ask an administrator to configure it before posting an amount
+                  due from a driver.
+                </p>
+              )}
             </div>
           )}
           <label className="flex items-center gap-2 text-sm">
@@ -496,7 +508,7 @@ export default function NewSettlementPage() {
                 saving ||
                 totals.gross <= 0 ||
                 overRecovered ||
-                (totals.net < 0 && (!allowNegative || !receivableAccount))
+                (totals.net < 0 && (!allowNegative || !receivableConfig))
               }
             >
               {saving ? "Saving…" : "Save & Post"}
