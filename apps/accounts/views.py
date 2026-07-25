@@ -35,7 +35,8 @@ class EntityScopedMasterViewSet(viewsets.ModelViewSet):
     """
 
     permission_classes = [ReadAnyWriteRole]
-    required_roles = ("accountant", "manager", "admin")
+    # Annotated open-ended so subclasses can narrow or widen the roles.
+    required_roles: tuple[str, ...] = ("accountant", "manager", "admin")
     http_method_names = ["get", "post", "put", "patch", "head", "options"]
     entity_field = "entity_id"
 
