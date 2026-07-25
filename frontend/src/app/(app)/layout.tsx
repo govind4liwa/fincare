@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
+  CreditCard,
   FileMinus2,
   FilePlus2,
   FileText,
@@ -33,6 +34,7 @@ const NAV = [
   { href: "/debit-notes", label: "Debit Notes", icon: FilePlus2 },
   { href: "/parties", label: "Customers & Suppliers", icon: Users },
   { href: "/fleet", label: "Fleet & Drivers", icon: Truck },
+  { href: "/loans", label: "Vehicle Loans", icon: CreditCard },
   { href: "/banking", label: "Bank Accounts", icon: Landmark },
   { href: "/reconcile", label: "Reconciliation", icon: Scale },
   { href: "/reports", label: "Reports", icon: BarChart3 },
