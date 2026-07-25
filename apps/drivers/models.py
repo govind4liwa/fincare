@@ -108,12 +108,15 @@ class Settlement(BaseModel):
     recovery, Salik, fines, other). Posting:
         DR  gross_account (driver/vehicle dim)   = gross
         CR  each deduction account               = deduction amount
-        CR  bank (pay account)                   = net   (net > 0 → pay driver)
-        DR  bank (pay account)                   = -net  (net < 0 → driver pays in)
+        CR  bank (pay account)                   = net    (net > 0 → pay driver)
+        DR  driver_receivable_account            = -net   (net < 0 → driver owes)
+        (net == 0 → neither line is written)
 
-    The net-negative branch only runs when ``allows_negative_net`` is set: by
-    default a settlement whose deductions exceed gross is rejected rather than
-    silently inverted into money owed *by* the driver.
+    A negative net establishes an **amount due from the driver**; it is not
+    evidence that money changed hands, so it never touches bank or cash. The
+    receivable is cleared later by a separate receipt (DR Bank / CR Driver
+    Receivable). ``allows_negative_net`` is the explicit authorisation to create
+    that receivable — it does not assert receipt.
     """
 
     entity = models.ForeignKey(
@@ -134,10 +137,15 @@ class Settlement(BaseModel):
     pay_account = models.ForeignKey(
         "banking.BankAccount", on_delete=models.PROTECT, related_name="+"
     )
+    # Where a shortfall is parked when deductions exceed gross. Required only on
+    # that path; never defaulted from pay_account, which is a bank account.
+    driver_receivable_account = models.ForeignKey(
+        "accounts.Account", on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
     total_deductions = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     net_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
-    # Opt-in: permits deductions to exceed gross, so the driver pays the
-    # shortfall in. Off by default — see the class docstring.
+    # Opt-in: authorises this settlement to create an amount due FROM the driver
+    # when deductions exceed gross. It does not assert that payment was received.
     allows_negative_net = models.BooleanField(default=False)
     status = models.CharField(
         max_length=12, choices=DriverDocStatus.choices, default=DriverDocStatus.DRAFT, db_index=True

@@ -15,9 +15,11 @@ from rest_framework.test import APIClient
 
 import pytest
 
+from apps.accounts.models import Account
+from apps.accounts.services.seed import seed_entity_coa
 from apps.drivers.models import Advance, DriverDocStatus, Settlement
 from apps.ledger.models import EntryStatus
-from apps.tenants.models import UserEntityMembership
+from apps.tenants.models import Entity, UserEntityMembership
 
 pytestmark = pytest.mark.django_db
 User = get_user_model()
@@ -31,6 +33,8 @@ DRIVER_PAYOUT = "101-500-530-003"
 DRIVER_COMMISSION = "101-500-530-002"
 STAFF_ADVANCES = "101-100-120-003"
 SALIK = "101-500-510-001"
+
+UNSET = object()
 
 
 def _superuser():
@@ -63,9 +67,17 @@ def _advance_payload(entity, driver, acct, bank, amount="1000"):
 
 
 def _settlement_payload(
-    entity, driver, acct, bank, *, gross="5000", deductions=None, negative=False
+    entity,
+    driver,
+    acct,
+    bank,
+    *,
+    gross="5000",
+    deductions=None,
+    negative=False,
+    receivable=UNSET,
 ):
-    return {
+    payload = {
         "entity": str(entity.id),
         "driver": str(driver.id),
         "period_start": PERIOD_START.isoformat(),
@@ -77,6 +89,14 @@ def _settlement_payload(
         "allows_negative_net": negative,
         "deductions": deductions if deductions is not None else [],
     }
+    # Default the receivable account on the negative path so callers only pass it
+    # when they are testing the account itself.
+    if receivable is UNSET:
+        if negative:
+            payload["driver_receivable_account"] = str(acct(STAFF_ADVANCES).id)
+    elif receivable is not None:
+        payload["driver_receivable_account"] = receivable
+    return payload
 
 
 def _post_advance(client, entity, driver, acct, bank, amount="1000"):
@@ -204,8 +224,8 @@ def test_deductions_exceeding_gross_rejected_by_default(entity, driver, bank_enb
     assert posted.status_code == 400
 
 
-def test_negative_net_driver_pays_in(entity, driver, bank_enbd, acct):
-    """With the negative net explicitly allowed, the bank is DEBITED instead."""
+def test_negative_net_creates_a_driver_receivable_not_a_bank_entry(entity, driver, bank_enbd, acct):
+    """A shortfall is money OWED by the driver — never a bank or cash movement."""
     client = _superuser()
     payload = _settlement_payload(
         entity,
@@ -217,6 +237,7 @@ def test_negative_net_driver_pays_in(entity, driver, bank_enbd, acct):
         negative=True,
     )
     created = client.post("/api/v1/driver-settlements/", payload, format="json")
+    assert created.status_code == 201, created.content
     posted = client.post(
         f"/api/v1/driver-settlements/{created.data['id']}/post/", {}, format="json"
     )
@@ -225,8 +246,109 @@ def test_negative_net_driver_pays_in(entity, driver, bank_enbd, acct):
 
     je = Settlement.objects.get(id=created.data["id"]).journal_entry
     assert je.total_debit == je.total_credit == D("1500.00")
-    # Driver pays in: bank is debited by the shortfall.
-    assert je.lines.get(account=bank_enbd.gl_account).debit == D("500.00")
+    # The shortfall lands on the receivable...
+    receivable_line = je.lines.get(account=acct(STAFF_ADVANCES))
+    assert receivable_line.debit == D("500.00")
+    assert receivable_line.driver_id == driver.id  # dimension retained
+    # ...and the bank is not touched at all: no receipt is implied by posting.
+    assert not je.lines.filter(account=bank_enbd.gl_account).exists()
+
+
+def test_zero_net_writes_neither_bank_nor_receivable_line(entity, driver, bank_enbd, acct):
+    client = _superuser()
+    payload = _settlement_payload(
+        entity,
+        driver,
+        acct,
+        bank_enbd,
+        gross="1000",
+        deductions=[{"kind": "fine", "account": str(acct(SALIK).id), "amount": "1000"}],
+    )
+    created = client.post("/api/v1/driver-settlements/", payload, format="json")
+    posted = client.post(
+        f"/api/v1/driver-settlements/{created.data['id']}/post/", {}, format="json"
+    )
+    assert posted.status_code == 200, posted.content
+    assert posted.data["net_amount"] == "0.00"
+
+    je = Settlement.objects.get(id=created.data["id"]).journal_entry
+    assert je.total_debit == je.total_credit == D("1000.00")
+    assert not je.lines.filter(account=bank_enbd.gl_account).exists()
+    assert not je.lines.filter(account=acct(STAFF_ADVANCES)).exists()
+    assert je.lines.count() == 2  # gross + the single deduction, nothing else
+
+
+def test_negative_net_rejected_without_a_receivable_account(entity, driver, bank_enbd, acct):
+    client = _superuser()
+    payload = _settlement_payload(
+        entity,
+        driver,
+        acct,
+        bank_enbd,
+        gross="1000",
+        deductions=[{"kind": "fine", "account": str(acct(SALIK).id), "amount": "1500"}],
+        negative=True,
+        receivable=None,  # omit it entirely
+    )
+    res = client.post("/api/v1/driver-settlements/", payload, format="json")
+    assert res.status_code == 400
+    assert "driver_receivable_account" in res.data
+
+
+def test_receivable_account_must_belong_to_the_entity(entity, driver, bank_enbd, acct):
+    """An account from another entity cannot hold this entity's receivable."""
+    other = Entity.objects.create(
+        code="OTH", numeric_code="102", legal_name="Other LLC", category=entity.category
+    )
+    seed_entity_coa(other)
+    foreign = Account.objects.get(entity=other, code="102-100-120-003")
+    payload = _settlement_payload(
+        entity,
+        driver,
+        acct,
+        bank_enbd,
+        gross="1000",
+        deductions=[{"kind": "fine", "account": str(acct(SALIK).id), "amount": "1500"}],
+        negative=True,
+        receivable=str(foreign.id),
+    )
+    res = _superuser().post("/api/v1/driver-settlements/", payload, format="json")
+    assert res.status_code == 400
+    assert "driver_receivable_account" in res.data
+
+
+def test_receivable_account_must_be_an_asset(entity, driver, bank_enbd, acct):
+    payload = _settlement_payload(
+        entity,
+        driver,
+        acct,
+        bank_enbd,
+        gross="1000",
+        deductions=[{"kind": "fine", "account": str(acct(SALIK).id), "amount": "1500"}],
+        negative=True,
+        receivable=str(acct(DRIVER_COMMISSION).id),  # an expense account
+    )
+    res = _superuser().post("/api/v1/driver-settlements/", payload, format="json")
+    assert res.status_code == 400
+    assert "driver_receivable_account" in res.data
+
+
+def test_receivable_account_must_be_postable(entity, driver, bank_enbd, acct):
+    blocked = acct(STAFF_ADVANCES)
+    blocked.is_postable = False
+    blocked.save(update_fields=["is_postable"])
+    payload = _settlement_payload(
+        entity,
+        driver,
+        acct,
+        bank_enbd,
+        gross="1000",
+        deductions=[{"kind": "fine", "account": str(acct(SALIK).id), "amount": "1500"}],
+        negative=True,
+    )
+    res = _superuser().post("/api/v1/driver-settlements/", payload, format="json")
+    assert res.status_code == 400
+    assert "driver_receivable_account" in res.data
 
 
 def test_settlement_duplicate_post_rejected(entity, driver, bank_enbd, acct):

@@ -118,6 +118,30 @@ def post_advance(advance: Advance, *, user=None):
     return advance
 
 
+def _validated_receivable_account(settlement: Settlement):
+    """The account a negative net is parked on, checked before it is posted to.
+
+    Deliberately not defaulted from ``pay_account``: that is a bank account, and
+    booking a shortfall there would assert a receipt that never happened. The
+    account is validated by *nature* rather than a hardcoded code, so an entity
+    may use a dedicated Driver Receivable or an existing staff-advances style
+    asset account per its own chart-of-accounts policy.
+    """
+    account = settlement.driver_receivable_account
+    if account is None:
+        raise DriverError(
+            "A settlement whose deductions exceed gross needs a driver receivable "
+            "account — the shortfall is money owed by the driver, not a bank receipt."
+        )
+    if account.entity_id != settlement.entity_id:
+        raise DriverError("Driver receivable account belongs to a different entity.")
+    if not account.is_active or not account.is_postable:
+        raise DriverError("Driver receivable account must be active and postable.")
+    if account.sub_group.nature != "asset":
+        raise DriverError("Driver receivable account must be an asset account.")
+    return account
+
+
 @transaction.atomic
 def post_settlement(settlement: Settlement, *, user=None):
     if settlement.status != DriverDocStatus.DRAFT:
@@ -193,11 +217,30 @@ def post_settlement(settlement: Settlement, *, user=None):
                 "driver_id": settlement.driver_id,
             }
         )
-    pay_gl = settlement.pay_account.gl_account
     if net > ZERO:
-        rows.append({"account": pay_gl, "credit": net, "description": "Net payout"})
+        # Money leaves the bank to the driver.
+        rows.append(
+            {
+                "account": settlement.pay_account.gl_account,
+                "credit": net,
+                "description": "Net payout",
+            }
+        )
     elif net < ZERO:
-        rows.append({"account": pay_gl, "debit": -net, "description": "Driver settlement receipt"})
+        # Deductions swallowed the earnings: the driver OWES the difference. That
+        # is a receivable, not a receipt — nothing has been paid, so bank and cash
+        # stay untouched. A separate receipt clears it later
+        # (DR Bank / CR Driver Receivable).
+        rows.append(
+            {
+                "account": _validated_receivable_account(settlement),
+                "debit": -net,
+                "description": f"Amount due from driver ({settlement.driver.code})",
+                "driver_id": settlement.driver_id,
+                "vehicle_id": settlement.vehicle_id,
+            }
+        )
+    # net == ZERO: earnings fully absorbed — neither a bank nor a receivable line.
 
     entry = _post_rows(
         entity=settlement.entity,

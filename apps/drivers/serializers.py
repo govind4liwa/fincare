@@ -93,6 +93,7 @@ class SettlementSerializer(serializers.ModelSerializer):
             "gross_amount",
             "gross_account",
             "pay_account",
+            "driver_receivable_account",
             "total_deductions",
             "net_amount",
             "allows_negative_net",
@@ -121,6 +122,42 @@ class SettlementSerializer(serializers.ModelSerializer):
             )
         if attrs.get("gross_amount") is not None and attrs["gross_amount"] <= 0:
             raise serializers.ValidationError({"gross_amount": "Gross amount must be positive."})
+
+        # A shortfall is money owed by the driver, so it needs a receivable
+        # account. Checked here for a precise field error; the posting service
+        # re-validates it as the authority.
+        receivable = attrs.get("driver_receivable_account") or getattr(
+            self.instance, "driver_receivable_account", None
+        )
+        allows_negative = attrs.get("allows_negative_net")
+        if allows_negative is None:
+            allows_negative = getattr(self.instance, "allows_negative_net", False)
+        gross = attrs.get("gross_amount")
+        lines = attrs.get("deductions")
+        if gross is not None and lines is not None and allows_negative:
+            total = sum((line.get("amount") or 0) for line in lines)
+            if total > gross and not receivable:
+                raise serializers.ValidationError(
+                    {
+                        "driver_receivable_account": (
+                            "Required when deductions exceed gross — the shortfall is an "
+                            "amount due from the driver, cleared later by a separate receipt."
+                        )
+                    }
+                )
+        if receivable is not None:
+            if entity is not None and receivable.entity_id != entity.id:
+                raise serializers.ValidationError(
+                    {"driver_receivable_account": "Account belongs to a different entity."}
+                )
+            if not receivable.is_active or not receivable.is_postable:
+                raise serializers.ValidationError(
+                    {"driver_receivable_account": "Account must be active and postable."}
+                )
+            if receivable.sub_group.nature != "asset":
+                raise serializers.ValidationError(
+                    {"driver_receivable_account": "Account must be an asset account."}
+                )
         return attrs
 
     def create(self, validated_data):
