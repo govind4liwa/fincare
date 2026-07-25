@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-25
+
+**Bank reconciliation.**
+
+### Added
+- **Banking API** (previously unmounted): bank-account master, statement entry,
+  and reconciliation endpoints, all entity-scoped with role-gated writes.
+- **Bank accounts** — entity-scoped masters linked to a bank-type GL account
+  (validated), with deactivate-not-delete.
+- **Bank reconciliation** — a `/reconcile` workspace showing statement vs GL
+  balance, the difference, and the matched/unmatched breakdown:
+  - **Auto-match** imports statement lines to posted bank-GL journal lines
+    (deposit ↔ GL debit, withdrawal ↔ GL credit) with date-window and
+    amount-tolerance rules; rerun-safe (idempotent).
+  - **Manual match / unmatch** for the exceptions — 1:1, with side and equal
+    amount enforced, bypassing the auto date/reference rules.
+  - **Completion & locking** — a reconciliation can be completed only when every
+    statement line is matched and the statement/GL balances agree; completing
+    locks it and marks the statement reconciled. A manager or admin can
+    **reopen** a completed reconciliation. Every action is audited.
+
 ## [0.2.0] - 2026-07-25
 
 Phase 1.6 — the **operator web UI**: a Next.js frontend for day-to-day
@@ -86,6 +107,7 @@ First application release — the complete FinCare accounting backend.
 - Resolved all outstanding Dependabot advisories (**80 → 0**; 6 critical, 25 high),
   covering Django, WeasyPrint, and sentry-sdk on the production dependency set.
 
-[Unreleased]: https://github.com/govind4liwa/fincare/compare/v0.2.0...develop
+[Unreleased]: https://github.com/govind4liwa/fincare/compare/v0.3.0...develop
+[0.3.0]: https://github.com/govind4liwa/fincare/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/govind4liwa/fincare/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/govind4liwa/fincare/releases/tag/v0.1.0
