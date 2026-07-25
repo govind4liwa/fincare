@@ -161,3 +161,33 @@ export async function getWorkspace(reconId: string): Promise<Workspace> {
   if (!res.ok) throw new Error(`Failed to load the reconciliation (${res.status})`);
   return (await res.json()) as Workspace;
 }
+
+async function reconAction(reconId: string, path: string, body: object, fallback: string): Promise<Workspace> {
+  const res = await apiFetch(`/reconciliations/${reconId}/${path}/`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await detail(res, fallback));
+  return (await res.json()) as Workspace;
+}
+
+export function manualMatch(reconId: string, statementLine: string, journalLine: string) {
+  return reconAction(
+    reconId,
+    "manual-match",
+    { statement_line: statementLine, journal_line: journalLine },
+    "Could not match those lines.",
+  );
+}
+
+export function unmatch(reconId: string, item: string) {
+  return reconAction(reconId, "unmatch", { item }, "Could not unmatch.");
+}
+
+export function completeReconciliation(reconId: string) {
+  return reconAction(reconId, "complete", {}, "Could not complete the reconciliation.");
+}
+
+export function reopenReconciliation(reconId: string) {
+  return reconAction(reconId, "reopen", {}, "Could not reopen the reconciliation.");
+}

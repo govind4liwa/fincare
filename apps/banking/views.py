@@ -1,8 +1,10 @@
-"""Banking API: bank accounts (CRUD), statement entry, and auto-match reconciliation.
+"""Banking API: bank accounts (CRUD), statement entry, and reconciliation.
 
-Scope of this slice: auto-match only. Manual match/unmatch, completion/locking,
-and statement file import are explicitly out of scope — reconciliations never
-reach ``completed`` here (see ``auto_match(..., mark_complete=False)``).
+Reconciliation supports auto-match plus manual match/unmatch, and completion —
+allowed only when every statement line is matched and the statement/GL balances
+agree — which locks the reconciliation and marks the statement reconciled. A
+completed reconciliation can be reopened by a manager/admin. Statement file
+import and multi-currency reconciliation remain out of scope.
 """
 
 import logging
@@ -14,7 +16,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.views import EntityScopedMasterViewSet, scope_to_entities
-from apps.banking.models import BankAccount, BankStatement, Reconciliation
+from apps.banking.models import (
+    BankAccount,
+    BankStatement,
+    Reconciliation,
+    ReconciliationItem,
+    StatementLine,
+)
 from apps.banking.serializers import (
     BankAccountSerializer,
     BankStatementSerializer,
@@ -23,6 +31,7 @@ from apps.banking.serializers import (
     StatementLineSerializer,
 )
 from apps.banking.services import reconcile
+from apps.ledger.models import JournalLine
 from apps.users.permissions import ReadAnyWriteRole
 
 logger = logging.getLogger(__name__)
@@ -98,6 +107,89 @@ class ReconciliationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="workspace")
     def workspace(self, request, pk=None):
         return Response(self._workspace(self.get_object()))
+
+    @action(detail=True, methods=["post"], url_path="manual-match")
+    def manual_match(self, request, pk=None):
+        recon = self.get_object()
+        sl = StatementLine.objects.filter(
+            id=request.data.get("statement_line"), statement_id=recon.statement_id
+        ).first()
+        jl = (
+            JournalLine.objects.filter(
+                id=request.data.get("journal_line"),
+                account=recon.bank_account.gl_account,
+                entry__entity_id=recon.entity_id,
+            )
+            .select_related("entry")
+            .first()
+        )
+        if sl is None or jl is None:
+            return Response(
+                {"detail": "Statement line or GL line not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            reconcile.manual_match(recon, statement_line=sl, journal_line=jl, user=request.user)
+        except (ValueError, ArithmeticError, TypeError):
+            logger.exception("Manual match failed for reconciliation %s", recon.pk)
+            return Response(
+                {
+                    "detail": "Could not match — the amounts and sides must correspond "
+                    "(a deposit matches a GL debit; a withdrawal matches a GL credit)."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self._workspace(recon))
+
+    @action(detail=True, methods=["post"], url_path="unmatch")
+    def unmatch(self, request, pk=None):
+        recon = self.get_object()
+        item = ReconciliationItem.objects.filter(
+            id=request.data.get("item"), reconciliation=recon
+        ).first()
+        if item is None:
+            return Response({"detail": "Match not found."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            reconcile.unmatch(item, user=request.user)
+        except (ValueError, ArithmeticError, TypeError):
+            logger.exception("Unmatch failed for reconciliation %s", recon.pk)
+            return Response({"detail": "Could not unmatch."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self._workspace(recon))
+
+    @action(detail=True, methods=["post"], url_path="complete")
+    def complete(self, request, pk=None):
+        recon = self.get_object()
+        try:
+            reconcile.complete(recon, user=request.user)
+        except (ValueError, ArithmeticError, TypeError):
+            logger.warning("Complete rejected for reconciliation %s", recon.pk)
+            return Response(
+                {
+                    "detail": "Cannot complete — every statement line must be matched and the "
+                    "statement and GL balances must agree."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self._workspace(recon))
+
+    @action(detail=True, methods=["post"], url_path="reopen")
+    def reopen(self, request, pk=None):
+        recon = self.get_object()
+        user = request.user
+        if not (user.is_superuser or user.groups.filter(name__in=("manager", "admin")).exists()):
+            return Response(
+                {"detail": "Reopening a reconciliation requires a manager or admin role."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            reconcile.reopen(recon, user=user)
+        except (ValueError, ArithmeticError, TypeError):
+            logger.warning("Reopen rejected for reconciliation %s", recon.pk)
+            return Response(
+                {"detail": "Only a completed reconciliation can be reopened."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self._workspace(recon))
 
     def _workspace(self, recon):
         detail = reconcile.reconciliation_detail(recon)
