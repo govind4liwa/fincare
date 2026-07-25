@@ -40,42 +40,48 @@ class DriverAccountingConfigError(ValueError):
     """Raised when a Driver Receivable account is ineligible or unconfigured."""
 
 
-def validate_receivable_account(entity, account):
-    """Every rule an entity's Driver Receivable account must satisfy.
+def receivable_account_error(entity, account) -> str | None:
+    """Why ``account`` cannot be this entity's Driver Receivable account, else ``None``.
+
+    Every rule lives here, returning the reason as data rather than raising it.
+    Callers that want an exception use :func:`validate_receivable_account`; the API
+    reports this string directly, so no exception text ever reaches a response.
 
     A ``GENERAL`` account passes only because the configuration itself approves
     that specific account — the type is not what qualifies it.
     """
     if account is None:
-        raise DriverAccountingConfigError("A Driver Receivable account is required.")
+        return "A Driver Receivable account is required."
     if account.entity_id != entity.id:
-        raise DriverAccountingConfigError(
-            "Driver Receivable account belongs to a different entity."
-        )
+        return "Driver Receivable account belongs to a different entity."
     if not account.is_active:
-        raise DriverAccountingConfigError("Driver Receivable account must be active.")
+        return "Driver Receivable account must be active."
     if not account.is_postable:
-        raise DriverAccountingConfigError("Driver Receivable account must be postable.")
+        return "Driver Receivable account must be postable."
     if not account.allow_manual_posting:
-        raise DriverAccountingConfigError("Driver Receivable account must allow manual posting.")
+        return "Driver Receivable account must allow manual posting."
     if account.sub_group.nature != "asset":
-        raise DriverAccountingConfigError("Driver Receivable account must be an asset account.")
+        return "Driver Receivable account must be an asset account."
     if account.normal_balance != "D":
         # Excludes contra-assets such as accumulated depreciation.
-        raise DriverAccountingConfigError("Driver Receivable account must be debit-normal.")
+        return "Driver Receivable account must be debit-normal."
     if account.is_bank_account or account.account_type in FORBIDDEN_TYPES:
-        raise DriverAccountingConfigError(
-            "Driver Receivable account cannot be a bank, cash, or fixed-asset account."
-        )
+        return "Driver Receivable account cannot be a bank, cash, or fixed-asset account."
     if account.is_control_account:
-        raise DriverAccountingConfigError(
+        return (
             "Driver Receivable account cannot be a control account — settlement lines "
             "carry the driver dimension, not a party subledger."
         )
     if account.subledger:
-        raise DriverAccountingConfigError(
-            "Driver Receivable account cannot belong to a customer or supplier subledger."
-        )
+        return "Driver Receivable account cannot belong to a customer or supplier subledger."
+    return None
+
+
+def validate_receivable_account(entity, account):
+    """Raise unless ``account`` may be this entity's Driver Receivable account."""
+    problem = receivable_account_error(entity, account)
+    if problem is not None:
+        raise DriverAccountingConfigError(problem)
     return account
 
 

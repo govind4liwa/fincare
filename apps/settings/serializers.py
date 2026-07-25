@@ -4,9 +4,8 @@ from rest_framework import serializers
 
 from apps.settings.models import DriverAccountingConfig
 from apps.settings.services.driver_accounting import (
-    DriverAccountingConfigError,
+    receivable_account_error,
     set_driver_receivable_account,
-    validate_receivable_account,
 )
 
 
@@ -29,12 +28,11 @@ class DriverAccountingConfigSerializer(serializers.ModelSerializer):
         account = attrs.get("default_receivable_account") or getattr(
             self.instance, "default_receivable_account", None
         )
-        # Mirrors the service gate so the API returns a field-level error; the
-        # service remains the authority (save() never calls full_clean()).
-        try:
-            validate_receivable_account(entity, account)
-        except DriverAccountingConfigError as exc:
-            raise serializers.ValidationError({"default_receivable_account": str(exc)}) from exc
+        # The service owns the rules; this asks it for the reason as data rather
+        # than catching its exception, so no exception text reaches the response.
+        problem = receivable_account_error(entity, account)
+        if problem is not None:
+            raise serializers.ValidationError({"default_receivable_account": problem})
         return attrs
 
     # Writes go through the service rather than the default ModelSerializer
