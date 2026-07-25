@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-25
+
+**Vehicle finance schedules and driver settlements.**
+
+### Added
+- **Vehicle-loan amortization schedules** — versioned, reconciled and lockable:
+  - **Per-loan amortization method**: `REDUCING_BALANCE`, `FLAT_RATE`, and
+    `FLAT_QUOTED_EFFECTIVE` — the UAE auto-finance convention where a contract is
+    quoted flat but each instalment is split at the effective rate it implies. The
+    split rate is the IRR of the contract, solved deterministically on `Decimal`
+    (Newton with an analytic derivative, bisection fallback, no binary floats).
+    `LENDER_PROVIDED` is documented as the extension point for importing a bank's
+    own schedule.
+  - **`LoanSchedule` versions** (draft → approved → superseded) snapshot the inputs
+    and totals they were generated from. Rounding drift is absorbed by the *final*
+    instalment, and a schedule is validated to reconcile exactly — principal,
+    interest, payments and a balance closing to zero — before it is saved.
+  - Approving a version locks it and supersedes the previous one; version numbers
+    are monotonic and never reused. **EMIs can only be posted from an approved
+    schedule.**
+  - A `/loans` workspace to create loans, generate and compare versions, approve or
+    discard drafts, and post instalments.
+- **Driver advances and settlements**:
+  - **Advances** — `DR Driver Advance / CR Bank`, with recovery tracked against the
+    outstanding balance. Concurrent settlements recovering the same advance are
+    serialised so they cannot jointly over-recover it.
+  - **Settlements** — gross earnings less deductions (commission, salary, advance
+    recovery, Salik, fines), posting the net to bank when the driver is owed money.
+  - **Negative net** — when deductions exceed earnings the driver *owes* money, so
+    posting debits a **Driver Receivable** account and leaves **bank and cash
+    untouched**; a separate receipt clears it when the money is actually collected.
+    A settlement must opt in via `allows_negative_net`.
+  - `/advances` and `/settlements` screens with live gross → deductions → net
+    totals and advance-recovery pickers.
+- **Per-entity Driver Receivable configuration** — each entity nominates exactly one
+  account that may hold a driver receivable, and configuring it *is* the approval.
+  No account is reclassified: `Staff Advances` remains a general asset and the
+  `RECEIVABLE` account type still means customer AR. Existing entities are
+  configured automatically on upgrade, and new ones at provisioning time; an entity
+  with no unambiguous match is left unconfigured rather than pointed at a guess.
+  A `/settings` screen lets a manager or admin change it.
+
+### Changed
+- Loan rate columns widened from 3 to 6 decimal places — a monthly effective rate
+  needs the extra precision, and at 3 dp a flat-quoted schedule drifts. Existing
+  values are preserved exactly.
+
 ## [0.3.0] - 2026-07-25
 
 **Bank reconciliation.**
@@ -107,7 +154,8 @@ First application release — the complete FinCare accounting backend.
 - Resolved all outstanding Dependabot advisories (**80 → 0**; 6 critical, 25 high),
   covering Django, WeasyPrint, and sentry-sdk on the production dependency set.
 
-[Unreleased]: https://github.com/govind4liwa/fincare/compare/v0.3.0...develop
+[Unreleased]: https://github.com/govind4liwa/fincare/compare/v0.4.0...develop
+[0.4.0]: https://github.com/govind4liwa/fincare/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/govind4liwa/fincare/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/govind4liwa/fincare/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/govind4liwa/fincare/releases/tag/v0.1.0
