@@ -118,9 +118,7 @@ def _clearing(entity, driver, bank, settlement, *, amount):
         amount=D(amount),
         bank_account=bank,
     )
-    DriverClearingLine.objects.create(
-        clearing=clearing, settlement=settlement, amount=D(amount)
-    )
+    DriverClearingLine.objects.create(clearing=clearing, settlement=settlement, amount=D(amount))
     return clearing
 
 
@@ -201,9 +199,7 @@ def test_concurrent_clearings_only_one_consumes_the_balance():
         assert settlement.receivable_balance == D("300.00")  # never driven negative
 
         # The loser wrote nothing at all: still draft, no number, no journal entry.
-        loser = next(
-            c for c in (a, b) if DriverClearing.objects.get(id=c.id).status != "posted"
-        )
+        loser = next(c for c in (a, b) if DriverClearing.objects.get(id=c.id).status != "posted")
         loser.refresh_from_db()
         assert loser.status == DriverDocStatus.DRAFT
         assert loser.journal_entry_id is None
