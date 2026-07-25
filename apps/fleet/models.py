@@ -116,10 +116,16 @@ class AmortizationMethod(models.TextChoices):
     periods, rescheduling, lender rounding). When that lands, schedules will be
     imported rather than computed — the generator must not be forced to
     approximate them.
+
+    ``FLAT_QUOTED_EFFECTIVE`` (design doc 08 §4.3) is the UAE auto-finance
+    convention: the *contract* is quoted flat (total interest = P × flat × years,
+    equal EMIs), but the principal/interest *split* follows the effective monthly
+    rate implied by that contract (the IRR of the instalment stream).
     """
 
     REDUCING_BALANCE = "reducing_balance", "Reducing balance"
     FLAT_RATE = "flat_rate", "Flat rate"
+    FLAT_QUOTED_EFFECTIVE = "flat_quoted_effective", "Flat quoted / effective split"
 
 
 class VehicleLoan(BaseModel):
@@ -145,17 +151,20 @@ class VehicleLoan(BaseModel):
     down_payment = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     term_months = models.PositiveSmallIntegerField(null=True, blank=True)
     emi_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
-    annual_interest_rate = models.DecimalField(max_digits=6, decimal_places=3, default=0)
+    annual_interest_rate = models.DecimalField(max_digits=9, decimal_places=6, default=0)
     amortization_method = models.CharField(
-        max_length=20,
+        max_length=24,
         choices=AmortizationMethod.choices,
         default=AmortizationMethod.REDUCING_BALANCE,
     )
     # Rates are stored separately: UAE auto finance is commonly *quoted* flat while
-    # the effective annual rate differs. Neither is derived from the other here.
-    quoted_flat_rate = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
+    # the effective annual rate differs. For FLAT_QUOTED_EFFECTIVE the quoted flat
+    # rate is the generation input and ``effective_annual_rate`` is derived and
+    # snapshotted at generation (6 dp — e.g. 8.753846%); for the other methods
+    # neither is derived from the other.
+    quoted_flat_rate = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     effective_annual_rate = models.DecimalField(
-        max_digits=6, decimal_places=3, null=True, blank=True
+        max_digits=9, decimal_places=6, null=True, blank=True
     )
     start_date = models.DateField(null=True, blank=True)
     first_payment_date = models.DateField(null=True, blank=True)
@@ -183,10 +192,13 @@ class LoanSchedule(BaseModel):
 
     loan = models.ForeignKey(VehicleLoan, on_delete=models.PROTECT, related_name="schedules")
     version_no = models.PositiveSmallIntegerField(default=1)
-    method = models.CharField(max_length=20, choices=AmortizationMethod.choices)
-    # Snapshot of the inputs this version was generated from (auditable).
+    method = models.CharField(max_length=24, choices=AmortizationMethod.choices)
+    # Snapshot of the inputs this version was generated from (auditable). For
+    # FLAT_QUOTED_EFFECTIVE the snapshotted rate is the *quoted flat* rate — the
+    # effective split rate is deterministically reproducible from
+    # (opening_principal, term_months, that rate), so the snapshot stays minimal.
     opening_principal = models.DecimalField(max_digits=18, decimal_places=2, default=0)
-    annual_interest_rate = models.DecimalField(max_digits=6, decimal_places=3, default=0)
+    annual_interest_rate = models.DecimalField(max_digits=9, decimal_places=6, default=0)
     term_months = models.PositiveSmallIntegerField(default=0)
     first_payment_date = models.DateField()
     total_principal = models.DecimalField(max_digits=18, decimal_places=2, default=0)

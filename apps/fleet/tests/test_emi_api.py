@@ -62,8 +62,10 @@ def test_create_loan_records_both_rates(entity, vehicle, acct):
     }
     res = _superuser().post("/api/v1/vehicle-loans/", payload, format="json")
     assert res.status_code == 201, res.content
-    assert res.data["quoted_flat_rate"] == "2.500"
-    assert res.data["effective_annual_rate"] == "4.750"
+    # Rates serialize at 6 dp since the FLAT_QUOTED_EFFECTIVE slice widened the
+    # columns to Decimal(9,6) — sub-milli-percent monthly rates need it.
+    assert res.data["quoted_flat_rate"] == "2.500000"
+    assert res.data["effective_annual_rate"] == "4.750000"
     assert res.data["approved_schedule_version"] is None
 
 

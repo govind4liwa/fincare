@@ -1,0 +1,347 @@
+{
+  "source": "docs/supporting-source/Auto-Loan-Repayment-Schedule-Updated.xlsx (sheet REPAYMENT-SCHEDULE)",
+  "note": "Lexus ES300H reference deal (design doc 08 \u00a72). The workbook's DAYS column is informational (days in the elapsed month) and does not enter the calculation \u2014 deliberately excluded here. The deal sheet displays the flat rate as 4.5%, but the contract rate is back-solved from the round EMI of 4,706.00: 20,166 / (149,250 x 3) = 4.503853% (6 dp) - which is why rate fields need Decimal(9,6); at 3 dp the schedule would drift by 0.66 AED.",
+  "inputs": {
+    "vehicle_cost": "199000.00",
+    "down_payment": "49750.00",
+    "principal": "149250.00",
+    "quoted_flat_rate_percent": "4.503853",
+    "term_months": 36,
+    "first_payment_date": "2025-08-01"
+  },
+  "expected": {
+    "emi": "4706.00",
+    "total_interest": "20166.00",
+    "total_payments": "169416.00",
+    "implied_monthly_rate_6dp_percent": "0.701758",
+    "effective_annual_rate_percent": "8.753846",
+    "final_due_date": "2028-07-01",
+    "closing_balance": "0.00"
+  },
+  "rows": [
+    {
+      "no": 1,
+      "due_date": "2025-08-01",
+      "total": "4706.00",
+      "principal": "3658.63",
+      "interest": "1047.37",
+      "opening": "149250.00",
+      "closing": "145591.37"
+    },
+    {
+      "no": 2,
+      "due_date": "2025-09-01",
+      "total": "4706.00",
+      "principal": "3684.30",
+      "interest": "1021.70",
+      "opening": "145591.37",
+      "closing": "141907.07"
+    },
+    {
+      "no": 3,
+      "due_date": "2025-10-01",
+      "total": "4706.00",
+      "principal": "3710.16",
+      "interest": "995.84",
+      "opening": "141907.07",
+      "closing": "138196.91"
+    },
+    {
+      "no": 4,
+      "due_date": "2025-11-01",
+      "total": "4706.00",
+      "principal": "3736.19",
+      "interest": "969.81",
+      "opening": "138196.91",
+      "closing": "134460.72"
+    },
+    {
+      "no": 5,
+      "due_date": "2025-12-01",
+      "total": "4706.00",
+      "principal": "3762.41",
+      "interest": "943.59",
+      "opening": "134460.72",
+      "closing": "130698.31"
+    },
+    {
+      "no": 6,
+      "due_date": "2026-01-01",
+      "total": "4706.00",
+      "principal": "3788.81",
+      "interest": "917.19",
+      "opening": "130698.31",
+      "closing": "126909.50"
+    },
+    {
+      "no": 7,
+      "due_date": "2026-02-01",
+      "total": "4706.00",
+      "principal": "3815.40",
+      "interest": "890.60",
+      "opening": "126909.50",
+      "closing": "123094.10"
+    },
+    {
+      "no": 8,
+      "due_date": "2026-03-01",
+      "total": "4706.00",
+      "principal": "3842.18",
+      "interest": "863.82",
+      "opening": "123094.10",
+      "closing": "119251.92"
+    },
+    {
+      "no": 9,
+      "due_date": "2026-04-01",
+      "total": "4706.00",
+      "principal": "3869.14",
+      "interest": "836.86",
+      "opening": "119251.92",
+      "closing": "115382.78"
+    },
+    {
+      "no": 10,
+      "due_date": "2026-05-01",
+      "total": "4706.00",
+      "principal": "3896.29",
+      "interest": "809.71",
+      "opening": "115382.78",
+      "closing": "111486.49"
+    },
+    {
+      "no": 11,
+      "due_date": "2026-06-01",
+      "total": "4706.00",
+      "principal": "3923.63",
+      "interest": "782.37",
+      "opening": "111486.49",
+      "closing": "107562.86"
+    },
+    {
+      "no": 12,
+      "due_date": "2026-07-01",
+      "total": "4706.00",
+      "principal": "3951.17",
+      "interest": "754.83",
+      "opening": "107562.86",
+      "closing": "103611.69"
+    },
+    {
+      "no": 13,
+      "due_date": "2026-08-01",
+      "total": "4706.00",
+      "principal": "3978.90",
+      "interest": "727.10",
+      "opening": "103611.69",
+      "closing": "99632.79"
+    },
+    {
+      "no": 14,
+      "due_date": "2026-09-01",
+      "total": "4706.00",
+      "principal": "4006.82",
+      "interest": "699.18",
+      "opening": "99632.79",
+      "closing": "95625.97"
+    },
+    {
+      "no": 15,
+      "due_date": "2026-10-01",
+      "total": "4706.00",
+      "principal": "4034.94",
+      "interest": "671.06",
+      "opening": "95625.97",
+      "closing": "91591.03"
+    },
+    {
+      "no": 16,
+      "due_date": "2026-11-01",
+      "total": "4706.00",
+      "principal": "4063.25",
+      "interest": "642.75",
+      "opening": "91591.03",
+      "closing": "87527.78"
+    },
+    {
+      "no": 17,
+      "due_date": "2026-12-01",
+      "total": "4706.00",
+      "principal": "4091.77",
+      "interest": "614.23",
+      "opening": "87527.78",
+      "closing": "83436.01"
+    },
+    {
+      "no": 18,
+      "due_date": "2027-01-01",
+      "total": "4706.00",
+      "principal": "4120.48",
+      "interest": "585.52",
+      "opening": "83436.01",
+      "closing": "79315.53"
+    },
+    {
+      "no": 19,
+      "due_date": "2027-02-01",
+      "total": "4706.00",
+      "principal": "4149.40",
+      "interest": "556.60",
+      "opening": "79315.53",
+      "closing": "75166.13"
+    },
+    {
+      "no": 20,
+      "due_date": "2027-03-01",
+      "total": "4706.00",
+      "principal": "4178.52",
+      "interest": "527.48",
+      "opening": "75166.13",
+      "closing": "70987.61"
+    },
+    {
+      "no": 21,
+      "due_date": "2027-04-01",
+      "total": "4706.00",
+      "principal": "4207.84",
+      "interest": "498.16",
+      "opening": "70987.61",
+      "closing": "66779.77"
+    },
+    {
+      "no": 22,
+      "due_date": "2027-05-01",
+      "total": "4706.00",
+      "principal": "4237.37",
+      "interest": "468.63",
+      "opening": "66779.77",
+      "closing": "62542.40"
+    },
+    {
+      "no": 23,
+      "due_date": "2027-06-01",
+      "total": "4706.00",
+      "principal": "4267.10",
+      "interest": "438.90",
+      "opening": "62542.40",
+      "closing": "58275.30"
+    },
+    {
+      "no": 24,
+      "due_date": "2027-07-01",
+      "total": "4706.00",
+      "principal": "4297.05",
+      "interest": "408.95",
+      "opening": "58275.30",
+      "closing": "53978.25"
+    },
+    {
+      "no": 25,
+      "due_date": "2027-08-01",
+      "total": "4706.00",
+      "principal": "4327.20",
+      "interest": "378.80",
+      "opening": "53978.25",
+      "closing": "49651.05"
+    },
+    {
+      "no": 26,
+      "due_date": "2027-09-01",
+      "total": "4706.00",
+      "principal": "4357.57",
+      "interest": "348.43",
+      "opening": "49651.05",
+      "closing": "45293.48"
+    },
+    {
+      "no": 27,
+      "due_date": "2027-10-01",
+      "total": "4706.00",
+      "principal": "4388.15",
+      "interest": "317.85",
+      "opening": "45293.48",
+      "closing": "40905.33"
+    },
+    {
+      "no": 28,
+      "due_date": "2027-11-01",
+      "total": "4706.00",
+      "principal": "4418.94",
+      "interest": "287.06",
+      "opening": "40905.33",
+      "closing": "36486.39"
+    },
+    {
+      "no": 29,
+      "due_date": "2027-12-01",
+      "total": "4706.00",
+      "principal": "4449.95",
+      "interest": "256.05",
+      "opening": "36486.39",
+      "closing": "32036.44"
+    },
+    {
+      "no": 30,
+      "due_date": "2028-01-01",
+      "total": "4706.00",
+      "principal": "4481.18",
+      "interest": "224.82",
+      "opening": "32036.44",
+      "closing": "27555.26"
+    },
+    {
+      "no": 31,
+      "due_date": "2028-02-01",
+      "total": "4706.00",
+      "principal": "4512.63",
+      "interest": "193.37",
+      "opening": "27555.26",
+      "closing": "23042.63"
+    },
+    {
+      "no": 32,
+      "due_date": "2028-03-01",
+      "total": "4706.00",
+      "principal": "4544.30",
+      "interest": "161.70",
+      "opening": "23042.63",
+      "closing": "18498.33"
+    },
+    {
+      "no": 33,
+      "due_date": "2028-04-01",
+      "total": "4706.00",
+      "principal": "4576.19",
+      "interest": "129.81",
+      "opening": "18498.33",
+      "closing": "13922.14"
+    },
+    {
+      "no": 34,
+      "due_date": "2028-05-01",
+      "total": "4706.00",
+      "principal": "4608.30",
+      "interest": "97.70",
+      "opening": "13922.14",
+      "closing": "9313.84"
+    },
+    {
+      "no": 35,
+      "due_date": "2028-06-01",
+      "total": "4706.00",
+      "principal": "4640.64",
+      "interest": "65.36",
+      "opening": "9313.84",
+      "closing": "4673.20"
+    },
+    {
+      "no": 36,
+      "due_date": "2028-07-01",
+      "total": "4706.00",
+      "principal": "4673.20",
+      "interest": "32.80",
+      "opening": "4673.20",
+      "closing": "0.00"
+    }
+  ]
+}

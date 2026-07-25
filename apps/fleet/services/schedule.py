@@ -7,13 +7,20 @@ and is locked once ``APPROVED``. Regenerating never edits an existing version �
 it creates a new one and supersedes the previous approval, so posted EMIs are
 never rewritten.
 
-Two methods are supported (per loan):
+Three methods are supported (per loan):
 
 * ``REDUCING_BALANCE`` — annuity. Interest accrues on the outstanding balance, so
   it is high early and tapers. ``EMI = P·i / (1 − (1+i)^−n)``; with a zero rate
   this degrades to ``P / n``.
-* ``FLAT_RATE`` — the common UAE auto-finance quoting convention. Total interest
-  is ``P · rate · years`` spread evenly, as is principal.
+* ``FLAT_RATE`` — flat quoting with a flat split. Total interest is
+  ``P · rate · years`` spread evenly, as is principal.
+* ``FLAT_QUOTED_EFFECTIVE`` — flat quoting with an effective split (design doc
+  08 §4.3, verified against the reference workbook). The contract totals come
+  from the flat quote (``interest = P · flat · n/12``, ``EMI = (P + interest)/n``)
+  but each EMI is split principal/interest at the **implied monthly effective
+  rate** — the IRR ``r`` solving ``P = EMI · (1 − (1+r)^−n) / r`` — so interest
+  tapers like a reducing-balance loan while the contract stays flat-quoted.
+  ``r`` is derived deterministically from ``(P, EMI, n)`` alone.
 
 Rounding differences from 2-dp quantisation are absorbed by the **final**
 instalment, which is what makes the exact reconciliation possible.
@@ -21,7 +28,7 @@ instalment, which is what makes the exact reconciliation possible.
 
 from calendar import monthrange
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 
 from django.db import transaction
 from django.utils import timezone
@@ -99,6 +106,110 @@ def _flat_rate_rows(principal: Decimal, annual_rate: Decimal, term: int):
     return rows
 
 
+#: Working precision for the IRR solve — far beyond the 2-dp money grid, so the
+#: quantised splits are stable regardless of magnitude.
+_IRR_PRECISION = 50
+_IRR_TOLERANCE = Decimal("1e-30")
+_IRR_MAX_NEWTON = 80
+_IRR_MAX_BISECT = 200
+_RATE_PLACES = Decimal("0.000001")
+
+
+def _implied_monthly_rate(principal: Decimal, emi: Decimal, term: int) -> Decimal:
+    """The monthly effective rate implied by ``term`` EMIs amortising ``principal``.
+
+    Solves ``f(r) = EMI · (1 − (1+r)^−n) / r − P = 0`` on Decimal only (no binary
+    floats): Newton with the analytic derivative, falling back to bisection.
+    Deterministic — fixed precision, fixed iteration rule, inputs only.
+    """
+    with localcontext() as ctx:
+        ctx.prec = _IRR_PRECISION
+        p, emi_ = Decimal(principal), Decimal(emi)
+        n = Decimal(term)
+        total = emi_ * n
+        if total == p:
+            return ZERO  # zero-interest contract
+        if total < p:
+            raise ScheduleError(
+                f"Instalments ({total}) cannot amortise the principal ({p}) — "
+                "no positive effective rate exists."
+            )
+
+        def f(r: Decimal) -> Decimal:
+            v = (Decimal(1) + r) ** -term
+            return emi_ * (Decimal(1) - v) / r - p
+
+        def f_prime(r: Decimal) -> Decimal:
+            one_plus = Decimal(1) + r
+            v = one_plus**-term
+            return emi_ * (n * v / one_plus * r - (Decimal(1) - v)) / (r * r)
+
+        # Standard closed-form first guess for an annuity rate.
+        r = Decimal(2) * (total - p) / (p * (n + 1))
+        for _ in range(_IRR_MAX_NEWTON):
+            derivative = f_prime(r)
+            if derivative == 0:
+                break
+            step = f(r) / derivative
+            r -= step
+            if r <= 0 or r > 1:
+                break  # left the plausible domain — bisection will take over
+            if abs(step) < _IRR_TOLERANCE:
+                return +r
+        # Bisection fallback: f is positive near 0 and decreasing in r.
+        low, high = Decimal("1e-12"), Decimal("1")
+        for _ in range(20):
+            if f(high) < 0:
+                break
+            high *= 2
+        else:
+            raise ScheduleError("Implied-rate solve did not converge (no sign change found).")
+        for _ in range(_IRR_MAX_BISECT):
+            mid = (low + high) / 2
+            if f(mid) > 0:
+                low = mid
+            else:
+                high = mid
+            if high - low < _IRR_TOLERANCE:
+                return +((low + high) / 2)
+        raise ScheduleError("Implied-rate solve did not converge.")
+
+
+def effective_annual_rate_percent(monthly_rate: Decimal) -> Decimal:
+    """``(1+r)^12 − 1`` as a percentage, 6 dp (e.g. 8.753846)."""
+    with localcontext() as ctx:
+        ctx.prec = _IRR_PRECISION
+        ear = ((Decimal(1) + monthly_rate) ** 12 - Decimal(1)) * Decimal(100)
+    return ear.quantize(_RATE_PLACES, rounding=ROUND_HALF_UP)
+
+
+def _flat_quoted_effective_rows(principal: Decimal, flat_rate: Decimal, term: int):
+    """Rows + (emi, total_interest, monthly_rate) for the flat-quoted method.
+
+    Contract totals come from the flat quote; the split walks the balance down at
+    the implied monthly rate. The final instalment absorbs *all* rounding: its
+    total is the contract remainder after ``n−1`` equal EMIs, its principal
+    clears the balance exactly, and its interest is the difference — so the
+    schedule reconciles exactly by construction.
+    """
+    years = Decimal(term) / MONTHS_PER_YEAR
+    total_interest = _q(principal * flat_rate / Decimal(100) * years)
+    contract_total = principal + total_interest
+    emi = _q(contract_total / term)
+    monthly_rate = _implied_monthly_rate(principal, emi, term)
+
+    rows = []
+    balance = principal
+    for _ in range(term - 1):
+        interest = _q(balance * monthly_rate)
+        principal_part = min(_q(emi - interest), balance)
+        balance -= principal_part
+        rows.append((principal_part, interest))
+    final_total = contract_total - emi * (term - 1)
+    rows.append((balance, final_total - balance))
+    return rows, emi, total_interest, monthly_rate
+
+
 def _validate_reconciles(rows, opening_principal, schedule_totals):
     """The schedule must tie back exactly — otherwise the books would drift."""
     total_principal = sum((r[0] for r in rows), ZERO)
@@ -134,11 +245,29 @@ def generate_schedule(loan, *, first_payment_date=None, note="", user=None):
 
     method = loan.amortization_method
     annual_rate = Decimal(loan.annual_interest_rate or 0)
+    derived_ear = None
     if method == AmortizationMethod.FLAT_RATE:
+        if annual_rate < 0:
+            raise ScheduleError("Interest rate cannot be negative.")
         rows = _flat_rate_rows(principal, annual_rate, term)
     elif method == AmortizationMethod.REDUCING_BALANCE:
+        if annual_rate < 0:
+            raise ScheduleError("Interest rate cannot be negative.")
         monthly_rate = annual_rate / Decimal(100) / MONTHS_PER_YEAR
         rows = _reducing_balance_rows(principal, monthly_rate, term)
+    elif method == AmortizationMethod.FLAT_QUOTED_EFFECTIVE:
+        if loan.quoted_flat_rate is None:
+            raise ScheduleError("FLAT_QUOTED_EFFECTIVE needs the loan's quoted flat rate (%/year).")
+        flat_rate = Decimal(loan.quoted_flat_rate)
+        if flat_rate < 0:
+            raise ScheduleError("Quoted flat rate cannot be negative.")
+        rows, _emi, _flat_interest, monthly_rate = _flat_quoted_effective_rows(
+            principal, flat_rate, term
+        )
+        derived_ear = effective_annual_rate_percent(monthly_rate)
+        # The snapshot rate for this method is the *quoted flat* rate — the
+        # effective rate is reproducible from (principal, term, that rate).
+        annual_rate = flat_rate
     else:  # pragma: no cover - guarded by model choices; future LENDER_PROVIDED
         raise ScheduleError(f"Unsupported amortization method {method!r}.")
 
@@ -191,6 +320,13 @@ def generate_schedule(loan, *, first_payment_date=None, note="", user=None):
     if balance != ZERO:
         raise ScheduleError(f"Schedule does not close to zero (residual {balance}).")
 
+    if derived_ear is not None:
+        # Snapshot the derived effective annual rate on the loan (design doc 08
+        # §4.3): quoted and effective rates are both stored, never recomputed
+        # from each other after approval.
+        loan.effective_annual_rate = derived_ear
+        loan.save(update_fields=["effective_annual_rate", "updated_at"])
+
     audit_record(
         action="create",
         instance=schedule,
@@ -199,6 +335,7 @@ def generate_schedule(loan, *, first_payment_date=None, note="", user=None):
         message=(
             f"Generated schedule v{version_no} ({method}) — {term} instalments, "
             f"principal {principal}, interest {total_interest}"
+            + (f", effective annual rate {derived_ear}%" if derived_ear is not None else "")
         ),
     )
     return schedule

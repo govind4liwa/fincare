@@ -23,9 +23,14 @@ import { cn } from "@/lib/utils";
 const money = (v: string) =>
   Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Rates are stored at 6 dp (monthly effective rates need it) but read better
+// trimmed: "4.503853" stays, "6.500000" shows as "6.5".
+const rate = (v: string) => String(Number(v));
+
 const METHOD_LABEL: Record<string, string> = {
   reducing_balance: "Reducing balance",
   flat_rate: "Flat rate",
+  flat_quoted_effective: "Flat quoted / effective split",
 };
 
 const STATUS_STYLE: Record<string, string> = {
@@ -116,8 +121,8 @@ export default function LoanDetailPage() {
           <p className="text-sm text-muted-foreground">
             {money(loan.principal)} over {loan.term_months} months ·{" "}
             {METHOD_LABEL[loan.amortization_method] ?? loan.amortization_method} @{" "}
-            {loan.annual_interest_rate}%
-            {loan.quoted_flat_rate ? ` (quoted flat ${loan.quoted_flat_rate}%)` : ""}
+            {rate(loan.annual_interest_rate)}%
+            {loan.quoted_flat_rate ? ` (quoted flat ${rate(loan.quoted_flat_rate)}%)` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
