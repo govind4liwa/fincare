@@ -10,6 +10,7 @@ through the ledger engine (ADR-0007).
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
+from django.conf import settings
 from django.db import models
 
 from apps.core.models import BaseModel
@@ -107,8 +108,27 @@ class VehicleDocument(BaseModel):
         return (self.expiry_date - (as_of or date.today())).days
 
 
+class AmortizationMethod(models.TextChoices):
+    """How an EMI schedule splits principal vs interest.
+
+    ``LENDER_PROVIDED`` is a deliberate extension point: a bank's actual schedule
+    can differ from a mathematically generated one (day counts, fees, grace
+    periods, rescheduling, lender rounding). When that lands, schedules will be
+    imported rather than computed — the generator must not be forced to
+    approximate them.
+    """
+
+    REDUCING_BALANCE = "reducing_balance", "Reducing balance"
+    FLAT_RATE = "flat_rate", "Flat rate"
+
+
 class VehicleLoan(BaseModel):
-    """A finance loan against a vehicle; installments post EMI splits."""
+    """A finance loan against a vehicle; installments post EMI splits.
+
+    The lender's approved repayment schedule is the authoritative source — the
+    generated :class:`LoanSchedule` models it, and is versioned so an amendment
+    never rewrites what was already posted.
+    """
 
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="vehicle_loans"
@@ -126,7 +146,19 @@ class VehicleLoan(BaseModel):
     term_months = models.PositiveSmallIntegerField(null=True, blank=True)
     emi_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     annual_interest_rate = models.DecimalField(max_digits=6, decimal_places=3, default=0)
+    amortization_method = models.CharField(
+        max_length=20,
+        choices=AmortizationMethod.choices,
+        default=AmortizationMethod.REDUCING_BALANCE,
+    )
+    # Rates are stored separately: UAE auto finance is commonly *quoted* flat while
+    # the effective annual rate differs. Neither is derived from the other here.
+    quoted_flat_rate = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
+    effective_annual_rate = models.DecimalField(
+        max_digits=6, decimal_places=3, null=True, blank=True
+    )
     start_date = models.DateField(null=True, blank=True)
+    first_payment_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -136,17 +168,72 @@ class VehicleLoan(BaseModel):
         return f"Loan {self.vehicle_id} {self.principal}"
 
 
+class LoanSchedule(BaseModel):
+    """One generated amortization schedule version for a loan.
+
+    Schedules are generated as ``DRAFT``, validated to reconcile exactly, then
+    ``APPROVED`` — which locks them. Regenerating produces a **new version** and
+    supersedes the previous one; posted installments are never rewritten.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        APPROVED = "approved", "Approved"
+        SUPERSEDED = "superseded", "Superseded"
+
+    loan = models.ForeignKey(VehicleLoan, on_delete=models.PROTECT, related_name="schedules")
+    version_no = models.PositiveSmallIntegerField(default=1)
+    method = models.CharField(max_length=20, choices=AmortizationMethod.choices)
+    # Snapshot of the inputs this version was generated from (auditable).
+    opening_principal = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    annual_interest_rate = models.DecimalField(max_digits=6, decimal_places=3, default=0)
+    term_months = models.PositiveSmallIntegerField(default=0)
+    first_payment_date = models.DateField()
+    total_principal = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    total_interest = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    total_payments = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.DRAFT, db_index=True
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    note = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["loan", "-version_no"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["loan", "version_no"], name="fleet_loan_schedule_unique_version"
+            ),
+        ]
+
+    def __str__(self):
+        return f"Schedule v{self.version_no} {self.loan_id} [{self.status}]"
+
+
 class VehicleLoanInstallment(BaseModel):
-    """One EMI. Posting: DR Loan Payable (principal) / DR Interest / CR Bank (total)."""
+    """One EMI. Posting: DR Loan Payable (principal) / DR Interest / CR Bank (total).
+
+    Belongs to a :class:`LoanSchedule` version (``schedule`` is null only for rows
+    created before schedules existed). Once posted an installment is immutable —
+    regenerating a schedule must never rewrite it.
+    """
 
     loan = models.ForeignKey(VehicleLoan, on_delete=models.CASCADE, related_name="installments")
+    schedule = models.ForeignKey(
+        LoanSchedule, on_delete=models.CASCADE, null=True, blank=True, related_name="installments"
+    )
     installment_no = models.PositiveSmallIntegerField(default=0)
     due_date = models.DateField(db_index=True)
     principal_component = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     interest_component = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    opening_balance = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    closing_balance = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     bank_account = models.ForeignKey(
-        "banking.BankAccount", on_delete=models.PROTECT, related_name="+"
+        "banking.BankAccount", on_delete=models.PROTECT, null=True, blank=True, related_name="+"
     )
     status = models.CharField(
         max_length=12, choices=FleetDocStatus.choices, default=FleetDocStatus.DRAFT, db_index=True
@@ -158,8 +245,11 @@ class VehicleLoanInstallment(BaseModel):
     class Meta:
         ordering = ["loan", "installment_no"]
         constraints = [
+            # Scoped to the schedule version, so a superseded version's rows can
+            # coexist with the new version's. (Legacy rows have schedule=NULL.)
             models.UniqueConstraint(
-                fields=["loan", "installment_no"], name="fleet_loan_installment_unique"
+                fields=["schedule", "installment_no"],
+                name="fleet_loan_installment_unique_in_schedule",
             ),
         ]
 

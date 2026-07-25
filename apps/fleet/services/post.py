@@ -20,6 +20,7 @@ from apps.fleet.models import (
     DepreciationLine,
     DepreciationRun,
     FleetDocStatus,
+    LoanSchedule,
     VehicleLoanInstallment,
 )
 from apps.ledger.models import JournalEntry, JournalLine
@@ -68,6 +69,14 @@ def _post_rows(*, entity, date, source_type, source_id, currency, narration, row
 def post_emi(installment: VehicleLoanInstallment, *, user=None):
     if installment.status != FleetDocStatus.DRAFT:
         raise FleetError(f"Cannot post an installment in status {installment.status!r}.")
+    # EMIs are posted from an approved (locked) schedule. Installments predating
+    # schedules carry schedule=None and stay postable.
+    schedule = installment.schedule
+    if schedule is not None and schedule.status != LoanSchedule.Status.APPROVED:
+        raise FleetError("Cannot post from a schedule that is not approved.")
+    bank_account = installment.bank_account
+    if bank_account is None:
+        raise FleetError("Installment needs a bank account before it can be posted.")
     principal = _q(installment.principal_component)
     interest = _q(installment.interest_component)
     total = _q(principal + interest)
@@ -96,7 +105,7 @@ def post_emi(installment: VehicleLoanInstallment, *, user=None):
         )
     rows.append(
         {
-            "account": installment.bank_account.gl_account,
+            "account": bank_account.gl_account,
             "credit": total,
             "description": "EMI payment",
         }
@@ -107,7 +116,7 @@ def post_emi(installment: VehicleLoanInstallment, *, user=None):
         date=installment.due_date,
         source_type="vehicle_emi",
         source_id=installment.id,
-        currency=installment.bank_account.currency or loan.entity.base_currency,
+        currency=bank_account.currency or loan.entity.base_currency,
         narration=f"Vehicle EMI {loan.vehicle_id} #{installment.installment_no}",
         rows=rows,
         user=user,
