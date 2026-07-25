@@ -439,6 +439,45 @@ def test_manager_can_write_configuration(entity, acct):
     assert get_config(entity).default_receivable_account_id == acct(STAFF_ADVANCES).id
 
 
+def test_api_revives_a_soft_deleted_configuration(entity, acct):
+    """The write path is the service, so POST revives instead of colliding with the
+    unique key the hidden row still holds."""
+    set_driver_receivable_account(entity, acct("101-100-120-006")).delete()
+    res = _client(entity, role="manager").post(
+        "/api/v1/driver-accounting-config/",
+        {"entity": str(entity.id), "default_receivable_account": str(acct(STAFF_ADVANCES).id)},
+        format="json",
+    )
+    assert res.status_code == 201, res.content
+    assert get_config(entity).default_receivable_account_id == acct(STAFF_ADVANCES).id
+    assert DriverAccountingConfig.all_objects.filter(entity=entity).count() == 1
+
+
+def test_api_patch_repoints_the_account(entity, acct):
+    config = set_driver_receivable_account(entity, acct(STAFF_ADVANCES))
+    res = _client(entity, role="manager").patch(
+        f"/api/v1/driver-accounting-config/{config.id}/",
+        {"default_receivable_account": str(acct("101-100-120-006").id)},
+        format="json",
+    )
+    assert res.status_code == 200, res.content
+    assert res.data["account_code"] == "101-100-120-006"
+    assert get_config(entity).id == config.id
+    assert DriverAccountingConfig.all_objects.filter(entity=entity).count() == 1
+
+
+def test_api_patch_rejects_an_ineligible_account(entity, acct):
+    config = set_driver_receivable_account(entity, acct(STAFF_ADVANCES))
+    res = _client(entity, role="manager").patch(
+        f"/api/v1/driver-accounting-config/{config.id}/",
+        {"default_receivable_account": str(acct(BANK_ENBD).id)},
+        format="json",
+    )
+    assert res.status_code == 400
+    assert "default_receivable_account" in res.data
+    assert get_config(entity).default_receivable_account_id == acct(STAFF_ADVANCES).id
+
+
 def test_api_rejects_ineligible_account_with_field_error(entity, acct):
     res = _client(entity, role="manager").post(
         "/api/v1/driver-accounting-config/",
