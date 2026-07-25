@@ -393,7 +393,8 @@ def test_role_required(entity, driver, bank_enbd, acct):
     UserEntityMembership.objects.create(user=user, entity=entity)
     client = APIClient()
     client.force_authenticate(user)
-    assert client.get("/api/v1/driver-settlements/").status_code == 403
+    read = client.get("/api/v1/driver-settlements/")
+    assert read.status_code == 403
     res = client.post(
         "/api/v1/driver-settlements/",
         _settlement_payload(entity, driver, acct, bank_enbd),
@@ -411,10 +412,11 @@ def test_posted_documents_are_immutable(entity, driver, bank_enbd, acct):
     """No PUT/PATCH/DELETE surface exists for these documents."""
     client = _superuser()
     advance = _post_advance(client, entity, driver, acct, bank_enbd)
-    assert client.delete(f"/api/v1/driver-advances/{advance['id']}/").status_code == 405
-    assert (
-        client.patch(
-            f"/api/v1/driver-advances/{advance['id']}/", {"amount": "5"}, format="json"
-        ).status_code
-        == 405
+    # Hoisted out of the assert: under `python -O` asserts are stripped, so a
+    # request made inside one would never fire (CodeQL py/side-effect-in-assert).
+    deleted = client.delete(f"/api/v1/driver-advances/{advance['id']}/")
+    assert deleted.status_code == 405
+    patched = client.patch(
+        f"/api/v1/driver-advances/{advance['id']}/", {"amount": "5"}, format="json"
     )
+    assert patched.status_code == 405
