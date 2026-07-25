@@ -11,13 +11,15 @@ import { listDrivers, listVehicles, type Driver, type Vehicle } from "@/lib/flee
 import {
   DEDUCTION_KINDS,
   createSettlement,
-  getDriverAccountingConfig,
   listOutstandingAdvances,
   postSettlement,
   type Advance,
   type DeductionKind,
-  type DriverAccountingConfig,
 } from "@/lib/settlements";
+import {
+  getDriverAccountingConfig,
+  type DriverAccountingConfig,
+} from "@/lib/settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -471,14 +473,20 @@ export default function NewSettlementPage() {
                     {receivableConfig.account_code} · {receivableConfig.account_name}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    This entity&rsquo;s configured Driver Receivable account. It is set once in
-                    entity configuration, not chosen per settlement.
+                    This entity&rsquo;s configured Driver Receivable account, set once in{" "}
+                    <Link href="/settings" className="underline hover:text-foreground">
+                      Settings
+                    </Link>{" "}
+                    rather than chosen per settlement.
                   </p>
                 </>
               ) : (
                 <p className="text-xs text-destructive">
-                  {NOT_CONFIGURED} Ask an administrator to configure it before posting an amount
-                  due from a driver.
+                  {NOT_CONFIGURED} A manager or admin can choose one in{" "}
+                  <Link href="/settings" className="underline">
+                    Settings
+                  </Link>
+                  .
                 </p>
               )}
             </div>

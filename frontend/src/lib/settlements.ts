@@ -122,31 +122,6 @@ export async function postAdvance(id: string): Promise<Advance> {
   return (await res.json()) as Advance;
 }
 
-// --- driver accounting configuration ----------------------------------------
-
-/**
- * The entity's approved Driver Receivable account. Configuring it *is* the
- * approval to post driver receivables, so the settlement form displays it rather
- * than offering a choice.
- */
-export type DriverAccountingConfig = {
-  id: string;
-  entity: string;
-  default_receivable_account: string;
-  account_code: string;
-  account_name: string;
-};
-
-/** `null` when the entity has no configuration — negative net cannot be posted. */
-export async function getDriverAccountingConfig(
-  entityId: string,
-): Promise<DriverAccountingConfig | null> {
-  const res = await apiFetch(`/driver-accounting-config/?entity=${entityId}`);
-  if (!res.ok) throw new Error(`Failed to load driver accounting configuration (${res.status})`);
-  const page = (await res.json()) as Paginated<DriverAccountingConfig>;
-  return page.results[0] ?? null;
-}
-
 // --- settlements ------------------------------------------------------------
 
 export async function listSettlements(entityId?: string | null): Promise<Settlement[]> {

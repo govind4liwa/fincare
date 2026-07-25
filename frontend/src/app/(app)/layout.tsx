@@ -17,6 +17,7 @@ import {
   Receipt,
   ReceiptText,
   Scale,
+  Settings,
   Truck,
   Users,
   Wallet,
@@ -42,6 +43,7 @@ const NAV = [
   { href: "/banking", label: "Bank Accounts", icon: Landmark },
   { href: "/reconcile", label: "Reconciliation", icon: Scale },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
