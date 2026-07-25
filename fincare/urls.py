@@ -19,6 +19,7 @@ api_v1_patterns = [
     path("", include("apps.ledger.urls")),  # /api/v1/periods/
     path("", include("apps.fleet.urls")),  # /api/v1/vehicles/
     path("", include("apps.drivers.urls")),  # /api/v1/drivers/
+    path("", include("apps.settings.urls")),  # /api/v1/driver-accounting-config/
     path("", include("apps.vouchers.urls")),  # /api/v1/vouchers/
     path(
         "", include("apps.banking.urls")

@@ -11,6 +11,7 @@ from apps.banking.models import BankAccount
 from apps.core.models import Currency
 from apps.drivers.models import Driver
 from apps.ledger.models import AccountingPeriod
+from apps.settings.services.driver_accounting import provision_driver_accounting
 from apps.tenants.models import BusinessCategory, Entity
 
 BANK_ENBD = "101-100-110-010"
@@ -35,6 +36,9 @@ def entity(db):
         base_currency=aed,
     )
     seed_entity_coa(ent)
+    # Mirrors real provisioning (see the seed_coa command): a freshly seeded
+    # entity comes with its Driver Receivable account already configured.
+    provision_driver_accounting(ent)
     AccountingPeriod.objects.create(
         entity=ent,
         fiscal_year=2026,

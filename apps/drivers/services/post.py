@@ -20,6 +20,10 @@ from apps.core.services import sequences
 from apps.drivers.models import Advance, DriverDocStatus, Settlement
 from apps.ledger.models import JournalEntry, JournalLine
 from apps.ledger.services.posting import PostingError, post_journal_entry
+from apps.settings.services.driver_accounting import (
+    DriverAccountingConfigError,
+    resolve_receivable_account,
+)
 
 TWO_PLACES = Decimal("0.01")
 ZERO = Decimal("0.00")
@@ -118,6 +122,35 @@ def post_advance(advance: Advance, *, user=None):
     return advance
 
 
+def _resolve_receivable_account(settlement: Settlement):
+    """The entity's configured Driver Receivable account for a negative net.
+
+    The account is never chosen per-settlement: each entity configures exactly
+    one (``settings.DriverAccountingConfig``), and configuring it *is* the
+    approval. A settlement may carry the account for historical audit, but it
+    must equal the configured one — any other account, however plausible, is
+    rejected. It is never defaulted from ``pay_account``, which is a bank
+    account: booking a shortfall there would assert a receipt that never
+    happened.
+    """
+    try:
+        configured = resolve_receivable_account(settlement.entity)
+    except DriverAccountingConfigError as exc:
+        raise DriverError(str(exc)) from exc
+
+    supplied = settlement.driver_receivable_account
+    if supplied is not None and supplied.id != configured.id:
+        raise DriverError(
+            "Driver receivable account does not match the entity's configured "
+            f"account ({configured.code})."
+        )
+    if supplied is None:
+        # Persist what was actually used, so later configuration changes never
+        # rewrite the history of this posting.
+        settlement.driver_receivable_account = configured
+    return configured
+
+
 @transaction.atomic
 def post_settlement(settlement: Settlement, *, user=None):
     if settlement.status != DriverDocStatus.DRAFT:
@@ -127,10 +160,53 @@ def post_settlement(settlement: Settlement, *, user=None):
         raise DriverError("Gross amount must be positive.")
 
     deductions = list(settlement.deductions.select_related("account").all())
+    if any(_q(d.amount) <= ZERO for d in deductions):
+        raise DriverError("Deduction amounts must be positive.")
     total_ded = sum((_q(d.amount) for d in deductions), ZERO)
-    if total_ded > gross:
+    if total_ded > gross and not settlement.allows_negative_net:
         raise DriverError(f"Deductions {total_ded} exceed gross {gross}.")
     net = _q(gross - total_ded)
+
+    # --- advance recovery: locked, aggregated, validated before any write ------
+    #
+    # Aggregate first so several lines against one advance are checked as a whole,
+    # then re-read those advances FOR UPDATE. The lock is what makes the balance
+    # check safe: two settlements recovering the same advance concurrently would
+    # otherwise both validate against the same stale balance and jointly
+    # over-recover it. Rows are locked in primary-key order so two posts touching
+    # the same set of advances always acquire them in the same sequence, which
+    # avoids deadlocking each other.
+    #
+    # The `deductions` rows are deliberately NOT select_related("advance") — a
+    # prefetched copy would be a pre-lock snapshot, exactly the stale read this
+    # guards against.
+    recovery_by_advance: dict = {}
+    for d in deductions:
+        if d.advance_id:
+            recovery_by_advance[d.advance_id] = recovery_by_advance.get(d.advance_id, ZERO) + _q(
+                d.amount
+            )
+
+    locked_advances: dict = {}
+    if recovery_by_advance:
+        advance_ids = sorted(recovery_by_advance)
+        locked_advances = {
+            adv.id: adv
+            for adv in Advance.objects.select_for_update().filter(id__in=advance_ids).order_by("id")
+        }
+        if len(locked_advances) != len(advance_ids):
+            raise DriverError("Settlement deduction references a missing advance.")
+        for advance_id in advance_ids:
+            adv = locked_advances[advance_id]
+            if adv.driver_id != settlement.driver_id or adv.entity_id != settlement.entity_id:
+                raise DriverError("Advance belongs to a different driver or entity.")
+            if adv.status != DriverDocStatus.POSTED:
+                raise DriverError("Only a posted advance can be recovered.")
+            if recovery_by_advance[advance_id] > _q(adv.balance):
+                raise DriverError(
+                    f"Recovery {recovery_by_advance[advance_id]} exceeds the outstanding "
+                    f"balance {_q(adv.balance)} on advance {adv.advance_no or advance_id}."
+                )
 
     rows = [
         {
@@ -150,11 +226,37 @@ def post_settlement(settlement: Settlement, *, user=None):
                 "driver_id": settlement.driver_id,
             }
         )
-    pay_gl = settlement.pay_account.gl_account
+    if net >= ZERO and settlement.driver_receivable_account_id is not None:
+        # Nothing is owed, so a receivable account is meaningless here. Rejecting
+        # beats ignoring: silently dropping it would let an operator believe a
+        # receivable had been configured on this settlement.
+        raise DriverError(
+            "A driver receivable account may only be set when deductions exceed gross."
+        )
     if net > ZERO:
-        rows.append({"account": pay_gl, "credit": net, "description": "Net payout"})
+        # Money leaves the bank to the driver.
+        rows.append(
+            {
+                "account": settlement.pay_account.gl_account,
+                "credit": net,
+                "description": "Net payout",
+            }
+        )
     elif net < ZERO:
-        rows.append({"account": pay_gl, "debit": -net, "description": "Driver settlement receipt"})
+        # Deductions swallowed the earnings: the driver OWES the difference. That
+        # is a receivable, not a receipt — nothing has been paid, so bank and cash
+        # stay untouched. A separate receipt clears it later
+        # (DR Bank / CR Driver Receivable).
+        rows.append(
+            {
+                "account": _resolve_receivable_account(settlement),
+                "debit": -net,
+                "description": f"Amount due from driver ({settlement.driver.code})",
+                "driver_id": settlement.driver_id,
+                "vehicle_id": settlement.vehicle_id,
+            }
+        )
+    # net == ZERO: earnings fully absorbed — neither a bank nor a receivable line.
 
     entry = _post_rows(
         entity=settlement.entity,
@@ -167,15 +269,13 @@ def post_settlement(settlement: Settlement, *, user=None):
         user=user,
     )
 
-    # Recover advances linked to deduction lines.
-    for d in deductions:
-        if d.advance_id:
-            adv = d.advance
-            if adv is None:
-                raise DriverError("Settlement deduction references a missing advance.")
-            adv.recovered_amount = _q(adv.recovered_amount + _q(d.amount))
-            adv.balance = _q(adv.amount - adv.recovered_amount)
-            adv.save(update_fields=["recovered_amount", "balance", "updated_at"])
+    # Apply the recovery to the rows locked above (never the prefetched copies),
+    # using the per-advance aggregate so split lines are written once.
+    for advance_id, recovered in recovery_by_advance.items():
+        adv = locked_advances[advance_id]
+        adv.recovered_amount = _q(adv.recovered_amount + recovered)
+        adv.balance = _q(adv.amount - adv.recovered_amount)
+        adv.save(update_fields=["recovered_amount", "balance", "updated_at"])
 
     settlement.total_deductions = total_ded
     settlement.net_amount = net
