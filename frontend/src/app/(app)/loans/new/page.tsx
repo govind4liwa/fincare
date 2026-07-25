@@ -77,6 +77,10 @@ export default function NewLoanPage() {
         options: [
           { value: "reducing_balance", label: "Reducing balance" },
           { value: "flat_rate", label: "Flat rate" },
+          {
+            value: "flat_quoted_effective",
+            label: "Flat quoted / effective split",
+          },
         ],
         help: "Must match the lender's schedule — it decides the interest split.",
       },
@@ -103,7 +107,12 @@ export default function NewLoanPage() {
         type: "number",
         help: "The rate the schedule is computed from.",
       },
-      { name: "quoted_flat_rate", label: "Quoted flat rate %", type: "number" },
+      {
+        name: "quoted_flat_rate",
+        label: "Quoted flat rate %",
+        type: "number",
+        help: "Required for the flat quoted / effective split method.",
+      },
       { name: "effective_annual_rate", label: "Effective annual rate %", type: "number" },
       { name: "start_date", label: "Start date", type: "date" },
       {

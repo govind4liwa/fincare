@@ -15,6 +15,7 @@ const money = (v: string) =>
 const METHOD_LABEL: Record<string, string> = {
   reducing_balance: "Reducing balance",
   flat_rate: "Flat rate",
+  flat_quoted_effective: "Flat quoted / effective split",
 };
 
 export default function LoansPage() {

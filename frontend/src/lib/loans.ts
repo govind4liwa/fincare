@@ -1,6 +1,9 @@
 import { apiFetch } from "@/lib/api";
 
-export type AmortizationMethod = "reducing_balance" | "flat_rate";
+export type AmortizationMethod =
+  | "reducing_balance"
+  | "flat_rate"
+  | "flat_quoted_effective";
 export type ScheduleStatus = "draft" | "approved" | "superseded";
 
 export type VehicleLoan = {
