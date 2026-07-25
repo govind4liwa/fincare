@@ -140,6 +140,11 @@ export default function SettlementsPage() {
                           "whitespace-nowrap px-4 py-2 text-right font-medium tabular-nums",
                           Number(s.net_amount) < 0 && "text-amber-600 dark:text-amber-400",
                         )}
+                        title={
+                          Number(s.net_amount) < 0
+                            ? "Amount due from the driver — recorded as a receivable, not a bank receipt"
+                            : "Net payout to the driver"
+                        }
                       >
                         {money(s.net_amount)}
                       </td>

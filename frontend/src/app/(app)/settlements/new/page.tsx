@@ -59,6 +59,7 @@ export default function NewSettlementPage() {
   const [gross, setGross] = useState("");
   const [grossAccount, setGrossAccount] = useState("");
   const [payAccount, setPayAccount] = useState("");
+  const [receivableAccount, setReceivableAccount] = useState("");
   const [allowNegative, setAllowNegative] = useState(false);
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [saving, setSaving] = useState(false);
@@ -145,8 +146,12 @@ export default function NewSettlementPage() {
     const filled = lines.filter((l) => l.account && num(l.amount) > 0);
     if (totals.net < 0 && !allowNegative) {
       return setError(
-        "Deductions exceed gross. Tick “driver pays the shortfall in” to allow a negative net.",
+        "Deductions exceed gross earnings. Tick “Allow an amount due from the driver” to " +
+          "record the shortfall as a receivable.",
       );
+    }
+    if (totals.net < 0 && !receivableAccount) {
+      return setError("Select the driver receivable account to hold the amount due.");
     }
     if (overRecovered) return setError("A recovery exceeds its advance's outstanding balance.");
 
@@ -162,6 +167,7 @@ export default function NewSettlementPage() {
         gross_amount: gross,
         gross_account: grossAccount,
         pay_account: payAccount,
+        driver_receivable_account: totals.net < 0 ? receivableAccount : null,
         allows_negative_net: allowNegative,
         deductions: filled.map((l) => ({
           kind: l.kind,
@@ -424,7 +430,7 @@ export default function NewSettlementPage() {
               <span className="tabular-nums">{money(totals.deductions)}</span>
             </div>
             <div className="flex justify-between gap-8 border-t border-border pt-1 font-semibold">
-              <span>{totals.net < 0 ? "Driver pays in" : "Net payout"}</span>
+              <span>{totals.net < 0 ? "Amount due from driver" : "Net payout"}</span>
               <span
                 className={cn(
                   "tabular-nums",
@@ -434,9 +440,37 @@ export default function NewSettlementPage() {
                 {money(Math.abs(totals.net))}
               </span>
             </div>
+            {totals.net < 0 && (
+              <p className="mt-1 border-t border-border pt-2 text-xs text-muted-foreground">
+                Posting records this as a <span className="font-medium">receivable</span> from the
+                driver. No bank or cash entry is made — record the money separately as a receipt
+                when it is actually collected.
+              </p>
+            )}
           </CardContent>
         </Card>
         <div className="flex flex-col items-end gap-3">
+          {totals.net < 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label>
+                Driver receivable account<span className="text-destructive"> *</span>
+              </Label>
+              <select
+                value={receivableAccount}
+                onChange={(e) => setReceivableAccount(e.target.value)}
+                className={cn(fieldClass, "min-w-72")}
+              >
+                <option value="">Select…</option>
+                {accounts
+                  .filter((a) => a.nature === "asset")
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.code} · {a.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -444,7 +478,7 @@ export default function NewSettlementPage() {
               onChange={(e) => setAllowNegative(e.target.checked)}
               className="h-4 w-4 rounded border-border"
             />
-            Allow a negative net (driver pays the shortfall in)
+            Allow an amount due from the driver (creates a receivable)
           </label>
           <div className="flex items-center gap-2">
             <Link href="/settlements">
@@ -458,7 +492,12 @@ export default function NewSettlementPage() {
             <Button
               size="sm"
               onClick={() => submit(true)}
-              disabled={saving || totals.gross <= 0 || overRecovered}
+              disabled={
+                saving ||
+                totals.gross <= 0 ||
+                overRecovered ||
+                (totals.net < 0 && (!allowNegative || !receivableAccount))
+              }
             >
               {saving ? "Saving…" : "Save & Post"}
             </Button>

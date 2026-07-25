@@ -54,8 +54,10 @@ export type Settlement = {
   gross_amount: string;
   gross_account: string;
   pay_account: string;
+  driver_receivable_account: string | null;
   total_deductions: string;
   net_amount: string;
+  /** Authorises creating an amount DUE FROM the driver. Not evidence of receipt. */
   allows_negative_net: boolean;
   status: DocStatus;
   journal_entry: string | null;
@@ -140,6 +142,8 @@ export type SettlementCreateInput = {
   gross_amount: string;
   gross_account: string;
   pay_account: string;
+  /** Required when deductions exceed gross; cleared later by a separate receipt. */
+  driver_receivable_account?: string | null;
   allows_negative_net: boolean;
   deductions: Omit<SettlementDeduction, "id" | "kind_display">[];
 };
