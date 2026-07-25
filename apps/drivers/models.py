@@ -147,6 +147,12 @@ class Settlement(BaseModel):
     # Opt-in: authorises this settlement to create an amount due FROM the driver
     # when deductions exceed gross. It does not assert that payment was received.
     allows_negative_net = models.BooleanField(default=False)
+    # How much of the receivable has been collected or written off, and what is
+    # still owed. Mirrors Advance.recovered_amount/balance. Both stay zero unless
+    # the settlement actually created a receivable (net < 0); ``receivable_balance``
+    # is seeded at posting time with the shortfall.
+    cleared_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    receivable_balance = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     status = models.CharField(
         max_length=12, choices=DriverDocStatus.choices, default=DriverDocStatus.DRAFT, db_index=True
     )
@@ -186,3 +192,92 @@ class SettlementDeduction(BaseModel):
 
     def __str__(self):
         return f"{self.kind} {self.amount}"
+
+
+class DriverClearing(BaseModel):
+    """Settles what a driver owes — either they paid, or we stopped chasing it.
+
+    A negative-net settlement books a receivable (see :class:`Settlement`). This
+    document clears it, and the two ways of clearing differ only in what is
+    debited::
+
+        RECEIPT     DR  bank_account.gl_account        = amount
+                    CR  receivable_account (driver dim)= amount
+
+        WRITE_OFF   DR  write_off_account              = amount
+                    CR  receivable_account (driver dim)= amount
+
+    Modelling both as one document keeps a single allocation mechanism and a
+    single audit trail: what was owed, what cleared it, and how much is left.
+    The credit account is never chosen here — it is resolved from the entity's
+    ``DriverAccountingConfig``, the same account the settlement debited, so a
+    receipt cannot credit somewhere the receivable never sat.
+    """
+
+    class Kind(models.TextChoices):
+        RECEIPT = "receipt", "Receipt from driver"
+        WRITE_OFF = "write_off", "Write-off"
+
+    entity = models.ForeignKey(
+        "tenants.Entity", on_delete=models.PROTECT, related_name="driver_clearings"
+    )
+    driver = models.ForeignKey(Driver, on_delete=models.PROTECT, related_name="clearings")
+    kind = models.CharField(
+        max_length=12, choices=Kind.choices, default=Kind.RECEIPT, db_index=True
+    )
+    clearing_no = models.CharField(max_length=24, blank=True)
+    clearing_date = models.DateField(db_index=True)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    # Where the money landed. Required for RECEIPT, must be empty for WRITE_OFF —
+    # a write-off moves no cash.
+    bank_account = models.ForeignKey(
+        "banking.BankAccount", on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
+    # Both resolved from configuration at posting time and persisted, so later
+    # configuration changes cannot rewrite the history of this posting.
+    receivable_account = models.ForeignKey(
+        "accounts.Account", on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
+    write_off_account = models.ForeignKey(
+        "accounts.Account", on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
+    reference = models.CharField(max_length=64, blank=True)
+    narration = models.CharField(max_length=255, blank=True)
+    status = models.CharField(
+        max_length=12, choices=DriverDocStatus.choices, default=DriverDocStatus.DRAFT, db_index=True
+    )
+    journal_entry = models.ForeignKey(
+        "ledger.JournalEntry", on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["-clearing_date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} {self.clearing_no or '(draft)'} {self.amount}"
+
+
+class DriverClearingLine(BaseModel):
+    """Applies part of a clearing to one settlement's outstanding receivable.
+
+    Allocation is explicit rather than a running driver balance, so the books can
+    always answer *which* shortfall was settled by *which* payment.
+    """
+
+    clearing = models.ForeignKey(DriverClearing, on_delete=models.CASCADE, related_name="lines")
+    settlement = models.ForeignKey(
+        Settlement, on_delete=models.PROTECT, related_name="clearing_lines"
+    )
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+
+    class Meta:
+        ordering = ["clearing", "settlement"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["clearing", "settlement"],
+                name="drivers_clearing_line_unique_settlement",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.settlement.settlement_no or self.settlement_id}: {self.amount}"

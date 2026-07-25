@@ -13,9 +13,26 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.views import EntityScopedMasterViewSet, scope_to_entities
-from apps.drivers.models import Advance, Driver, DriverDocStatus, Settlement
-from apps.drivers.serializers import AdvanceSerializer, DriverSerializer, SettlementSerializer
-from apps.drivers.services.post import DriverError, post_advance, post_settlement
+from apps.drivers.models import (
+    Advance,
+    Driver,
+    DriverClearing,
+    DriverDocStatus,
+    Settlement,
+)
+from apps.drivers.serializers import (
+    AdvanceSerializer,
+    DriverClearingSerializer,
+    DriverSerializer,
+    SettlementSerializer,
+)
+from apps.drivers.services.post import (
+    DriverError,
+    post_advance,
+    post_clearing,
+    post_settlement,
+    reverse_clearing,
+)
 from apps.users.permissions import HasAnyRole
 
 logger = logging.getLogger(__name__)
@@ -97,6 +114,19 @@ class SettlementViewSet(viewsets.ModelViewSet):
             self.request.user,
         )
 
+    @action(detail=False, methods=["get"], url_path="outstanding")
+    def outstanding(self, request):
+        """Posted settlements a driver still owes on — what a clearing can apply to."""
+        driver_id = request.query_params.get("driver")
+        if not driver_id:
+            return Response({"detail": "driver is required."}, status=status.HTTP_400_BAD_REQUEST)
+        rows = self.get_queryset().filter(
+            driver_id=driver_id,
+            status=DriverDocStatus.POSTED,
+            receivable_balance__gt=0,
+        )
+        return Response({"settlements": self.get_serializer(rows, many=True).data})
+
     @action(detail=True, methods=["post"], url_path="post")
     def post_settlement(self, request, pk=None):
         settlement = self.get_object()
@@ -113,3 +143,73 @@ class SettlementViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(self.get_serializer(settlement).data)
+
+
+class DriverClearingViewSet(viewsets.ModelViewSet):
+    """Settles what a driver owes: a receipt, or a write-off.
+
+    Posting books DR bank (receipt) or DR bad debts (write-off) against CR the
+    entity's configured Driver Receivable account, and applies the amount to the
+    settlements the clearing names. A posted clearing is never edited — it is
+    reversed (CLAUDE.md section 4.5).
+    """
+
+    serializer_class = DriverClearingSerializer
+    permission_classes = [IsAuthenticated, HasAnyRole]
+    required_roles = ROLES
+    http_method_names = ["get", "post", "head", "options"]
+    filterset_fields = ["entity", "driver", "kind", "status"]
+    ordering_fields = ["clearing_date", "clearing_no", "amount"]
+    ordering = ["-clearing_date", "-created_at"]
+
+    def get_queryset(self):
+        return scope_to_entities(
+            DriverClearing.objects.select_related("driver", "bank_account").prefetch_related(
+                "lines__settlement"
+            ),
+            self.request.user,
+        )
+
+    @action(detail=True, methods=["post"], url_path="post")
+    def post_clearing(self, request, pk=None):
+        clearing = self.get_object()
+        try:
+            post_clearing(clearing, user=request.user)
+        except DriverError:
+            logger.exception("Clearing posting failed for clearing %s", clearing.pk)
+            return Response(
+                {
+                    "detail": "Could not post this clearing — check that it is a draft, the "
+                    "amount is positive and equals what it applies, each settlement still has "
+                    "that much outstanding, and the entity has the required account configured."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self.get_serializer(clearing).data)
+
+    @action(detail=True, methods=["post"], url_path="reverse")
+    def reverse_clearing(self, request, pk=None):
+        """Reverse a posted clearing and give back what it cleared.
+
+        Restricted to manager/admin: it puts a receivable back on the books.
+        """
+        if (
+            not request.user.is_superuser
+            and not request.user.groups.filter(name__in=("manager", "admin")).exists()
+        ):
+            return Response(
+                {"detail": "Reversing a clearing requires a manager or admin role."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        clearing = self.get_object()
+        try:
+            reverse_clearing(clearing, user=request.user)
+        except DriverError:
+            logger.exception("Clearing reversal failed for clearing %s", clearing.pk)
+            return Response(
+                {
+                    "detail": "Could not reverse this clearing — only a posted clearing can be reversed."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self.get_serializer(clearing).data)
