@@ -51,6 +51,17 @@ class DriverAccountingConfig(BaseModel):
     default_receivable_account = models.ForeignKey(
         "accounts.Account", on_delete=models.PROTECT, related_name="+"
     )
+    # Where an uncollectible driver receivable is expensed. Nullable because an
+    # entity can operate perfectly well without ever writing one off; the
+    # write-off path simply refuses until it is configured, rather than guessing
+    # at an expense account.
+    default_write_off_account = models.ForeignKey(
+        "accounts.Account",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
 
     class Meta:
         ordering = ["entity"]

@@ -2,11 +2,17 @@
 
 from rest_framework.routers import DefaultRouter
 
-from apps.drivers.views import AdvanceViewSet, DriverViewSet, SettlementViewSet
+from apps.drivers.views import (
+    AdvanceViewSet,
+    DriverClearingViewSet,
+    DriverViewSet,
+    SettlementViewSet,
+)
 
 router = DefaultRouter()
 router.register("drivers", DriverViewSet, basename="driver")
 router.register("driver-advances", AdvanceViewSet, basename="driver-advance")
 router.register("driver-settlements", SettlementViewSet, basename="driver-settlement")
+router.register("driver-clearings", DriverClearingViewSet, basename="driver-clearing")
 
 urlpatterns = router.urls

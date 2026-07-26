@@ -28,6 +28,20 @@ STAFF_ADVANCE_MARKERS = {
     "is_postable": True,
 }
 
+#: Characteristics that identify the seeded bad-debt account, again without
+#: relying on any entity's full code. Same controlled-provisioning use only.
+WRITE_OFF_MARKERS = {
+    "sub_group__segment": "730",
+    "charge_segment": "002",
+    "name": "Bad Debts Written Off",
+    "account_type": Account.AccountType.EXPENSE,
+    "is_control_account": False,
+    "subledger": "",
+    "sub_group__nature": "expense",
+    "is_active": True,
+    "is_postable": True,
+}
+
 #: Account types that can never hold a driver receivable, whatever their nature.
 FORBIDDEN_TYPES = {
     Account.AccountType.BANK,
@@ -105,6 +119,63 @@ def set_driver_receivable_account(entity, account, *, user=None):
     return config
 
 
+def write_off_account_error(entity, account) -> str | None:
+    """Why ``account`` cannot expense a written-off driver receivable, else ``None``.
+
+    Looser than the receivable rules by design: this is an ordinary expense line,
+    so only entity, postability and nature matter. Returned as data, like
+    :func:`receivable_account_error`, so no exception text reaches a response.
+    """
+    if account is None:
+        return "A write-off account is required."
+    if account.entity_id != entity.id:
+        return "Write-off account belongs to a different entity."
+    if not account.is_active:
+        return "Write-off account must be active."
+    if not account.is_postable:
+        return "Write-off account must be postable."
+    if not account.allow_manual_posting:
+        return "Write-off account must allow manual posting."
+    if account.sub_group.nature != "expense":
+        return "Write-off account must be an expense account."
+    if account.is_control_account or account.subledger:
+        return "Write-off account cannot be a control or subledger account."
+    return None
+
+
+def set_driver_write_off_account(entity, account, *, user=None):
+    """Point an entity's configuration at its bad-debt account.
+
+    Requires an existing configuration: a write-off account is meaningless
+    without the receivable account it writes off.
+    """
+    problem = write_off_account_error(entity, account)
+    if problem is not None:
+        raise DriverAccountingConfigError(problem)
+    config = get_config(entity)
+    if config is None:
+        raise DriverAccountingConfigError(
+            "Driver Receivable account is not configured for this entity."
+        )
+    config.default_write_off_account = account
+    config.save(update_fields=["default_write_off_account", "updated_at"])
+    return config
+
+
+def resolve_write_off_account(entity):
+    """The entity's configured bad-debt account, or a clear error if it has none."""
+    config = (
+        DriverAccountingConfig.objects.filter(entity=entity)
+        .select_related("default_write_off_account__sub_group")
+        .first()
+    )
+    if config is None or config.default_write_off_account is None:
+        raise DriverAccountingConfigError(
+            "Driver write-off account is not configured for this entity."
+        )
+    return config.default_write_off_account
+
+
 def get_config(entity):
     """The live configuration, or ``None``. A soft-deleted one reads as absent."""
     return DriverAccountingConfig.objects.filter(entity=entity).first()
@@ -134,16 +205,30 @@ def find_provisionable_account(entity, *, account_model=Account):
     return matches[0] if len(matches) == 1 else None
 
 
+def find_provisionable_write_off_account(entity, *, account_model=Account):
+    """The unambiguous seeded bad-debt account for ``entity``, else ``None``."""
+    matches = list(account_model.objects.filter(entity=entity, **WRITE_OFF_MARKERS)[:2])
+    return matches[0] if len(matches) == 1 else None
+
+
 def provision_driver_accounting(entity):
     """Configure ``entity`` from its seeded chart of accounts. Idempotent.
 
-    Returns the config, or ``None`` when no unambiguous account exists — the
-    entity is then left unconfigured rather than pointed at something arbitrary.
+    Returns the config, or ``None`` when no unambiguous receivable account exists
+    — the entity is then left unconfigured rather than pointed at something
+    arbitrary. The write-off account is filled in on a best-effort basis and never
+    overwrites a deliberate choice; an entity without one simply cannot write off
+    until someone configures it.
     """
-    existing = get_config(entity)
-    if existing is not None:
-        return existing
-    account = find_provisionable_account(entity)
-    if account is None:
-        return None
-    return set_driver_receivable_account(entity, account)
+    config = get_config(entity)
+    if config is None:
+        account = find_provisionable_account(entity)
+        if account is None:
+            return None
+        config = set_driver_receivable_account(entity, account)
+    if config.default_write_off_account_id is None:
+        write_off = find_provisionable_write_off_account(entity)
+        if write_off is not None and write_off_account_error(entity, write_off) is None:
+            config.default_write_off_account = write_off
+            config.save(update_fields=["default_write_off_account", "updated_at"])
+    return config

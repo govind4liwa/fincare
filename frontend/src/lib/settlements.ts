@@ -59,6 +59,10 @@ export type Settlement = {
   net_amount: string;
   /** Authorises creating an amount DUE FROM the driver. Not evidence of receipt. */
   allows_negative_net: boolean;
+  /** How much of the receivable has been collected or written off. */
+  cleared_amount: string;
+  /** What the driver still owes on this settlement. Zero unless net < 0. */
+  receivable_balance: string;
   status: DocStatus;
   journal_entry: string | null;
   deductions: SettlementDeduction[];
@@ -167,4 +171,106 @@ export async function postSettlement(id: string): Promise<Settlement> {
   });
   if (!res.ok) throw new Error(await detail(res, "Could not post the settlement."));
   return (await res.json()) as Settlement;
+}
+
+// --- driver receivable clearing ---------------------------------------------
+
+export type ClearingKind = "receipt" | "write_off";
+
+export const CLEARING_KINDS: { value: ClearingKind; label: string; help: string }[] = [
+  {
+    value: "receipt",
+    label: "Receipt from driver",
+    help: "The driver paid. Debits the bank account the money landed in.",
+  },
+  {
+    value: "write_off",
+    label: "Write-off",
+    help: "The balance will not be collected. Expensed to bad debts; no money moves.",
+  },
+];
+
+export type DriverClearingLine = {
+  id?: string;
+  settlement: string;
+  settlement_no?: string;
+  settlement_date?: string;
+  amount: string;
+};
+
+export type DriverClearing = {
+  id: string;
+  entity: string;
+  driver: string;
+  driver_code: string;
+  driver_name: string;
+  kind: ClearingKind;
+  kind_display: string;
+  clearing_no: string;
+  clearing_date: string;
+  amount: string;
+  bank_account: string | null;
+  receivable_account: string | null;
+  write_off_account: string | null;
+  reference: string;
+  narration: string;
+  status: DocStatus;
+  journal_entry: string | null;
+  lines: DriverClearingLine[];
+};
+
+/** Posted settlements this driver still owes on — what a clearing can apply to. */
+export async function listOutstandingSettlements(driverId: string): Promise<Settlement[]> {
+  const res = await apiFetch(`/driver-settlements/outstanding/?driver=${driverId}`);
+  if (!res.ok) throw new Error(`Failed to load outstanding settlements (${res.status})`);
+  return ((await res.json()) as { settlements: Settlement[] }).settlements;
+}
+
+export async function listClearings(entityId?: string | null): Promise<DriverClearing[]> {
+  const params = new URLSearchParams({ limit: "200" });
+  if (entityId) params.set("entity", entityId);
+  const res = await apiFetch(`/driver-clearings/?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed to load clearings (${res.status})`);
+  return ((await res.json()) as Paginated<DriverClearing>).results;
+}
+
+export type ClearingCreateInput = {
+  entity: string;
+  driver: string;
+  kind: ClearingKind;
+  clearing_date: string;
+  amount: string;
+  /** Required for a receipt, must be null for a write-off. */
+  bank_account: string | null;
+  reference: string;
+  narration: string;
+  lines: { settlement: string; amount: string }[];
+};
+
+export async function createClearing(payload: ClearingCreateInput): Promise<DriverClearing> {
+  const res = await apiFetch("/driver-clearings/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not save the clearing."));
+  return (await res.json()) as DriverClearing;
+}
+
+export async function postClearing(id: string): Promise<DriverClearing> {
+  const res = await apiFetch(`/driver-clearings/${id}/post/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not post the clearing."));
+  return (await res.json()) as DriverClearing;
+}
+
+/** Reverses a posted clearing and puts the receivable back. Manager/admin only. */
+export async function reverseClearing(id: string): Promise<DriverClearing> {
+  const res = await apiFetch(`/driver-clearings/${id}/reverse/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not reverse the clearing."));
+  return (await res.json()) as DriverClearing;
 }
