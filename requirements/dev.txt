@@ -31,5 +31,5 @@ pre-commit==4.6.1
 django-silk==5.5.0          # request profiler
 
 # --- Docs ---
-mkdocs==1.6.0
+mkdocs==1.6.1
 mkdocs-material==9.5.27
