@@ -24,7 +24,7 @@ jobs:
         language: [python]
         # Add 'javascript-typescript' when Next.js frontend lands (Phase 1.6)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
