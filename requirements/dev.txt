@@ -20,7 +20,7 @@ django-stubs[compatible-mypy]==6.0.7
 djangorestframework-stubs[compatible-mypy]==3.17.0
 
 # --- Security scanners ---
-bandit[toml]==1.7.9
+bandit[toml]==1.9.4
 safety==3.2.0
 
 # --- Dev tools ---
