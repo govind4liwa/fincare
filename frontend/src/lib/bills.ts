@@ -41,7 +41,7 @@ export type BillCreateInput = {
   lines: BillLineInput[];
 };
 
-export type BillFilters = { entityId?: string | null; status?: string };
+export type BillFilters = { entityId?: string | null; status?: string; supplierId?: string };
 
 export async function listBills(
   filters: BillFilters = {},
@@ -49,6 +49,7 @@ export async function listBills(
   const params = new URLSearchParams({ limit: "100", ordering: "-bill_date" });
   if (filters.entityId) params.set("entity", filters.entityId);
   if (filters.status) params.set("status", filters.status);
+  if (filters.supplierId) params.set("supplier", filters.supplierId);
   const res = await apiFetch(`/bills/?${params.toString()}`);
   if (!res.ok) throw new Error(`Failed to load bills (${res.status})`);
   const data = (await res.json()) as Paginated<PurchaseBill>;
@@ -80,7 +81,13 @@ export type AllocationSource = {
   available: string;
 };
 
-export type Allocation = { source_type: string; amount: string; date: string };
+export type Allocation = {
+  id: string;
+  source_type: string;
+  amount: string;
+  date: string;
+  reversed: boolean;
+};
 
 export async function listBillSources(supplierId: string): Promise<AllocationSource[]> {
   const res = await apiFetch(`/bills/allocatable-sources/?supplier=${supplierId}`);
@@ -103,4 +110,25 @@ export async function allocateBill(
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(await detail(res, "Could not apply the allocation."));
+}
+
+export async function allocateBillBulk(payload: {
+  supplier: string;
+  source_type: string;
+  source_id: string;
+  lines: { bill_id: string; amount: string }[];
+}): Promise<void> {
+  const res = await apiFetch("/bills/allocate-bulk/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not apply the allocation."));
+}
+
+export async function unallocateBill(id: string, allocationId: string): Promise<void> {
+  const res = await apiFetch(`/bills/${id}/unallocate/`, {
+    method: "POST",
+    body: JSON.stringify({ allocation_id: allocationId }),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not reverse the allocation."));
 }

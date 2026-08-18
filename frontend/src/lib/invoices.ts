@@ -40,7 +40,7 @@ export type InvoiceCreateInput = {
   lines: InvoiceLineInput[];
 };
 
-export type InvoiceFilters = { entityId?: string | null; status?: string };
+export type InvoiceFilters = { entityId?: string | null; status?: string; customerId?: string };
 
 export async function listInvoices(
   filters: InvoiceFilters = {},
@@ -48,6 +48,7 @@ export async function listInvoices(
   const params = new URLSearchParams({ limit: "100", ordering: "-invoice_date" });
   if (filters.entityId) params.set("entity", filters.entityId);
   if (filters.status) params.set("status", filters.status);
+  if (filters.customerId) params.set("customer", filters.customerId);
   const res = await apiFetch(`/invoices/?${params.toString()}`);
   if (!res.ok) throw new Error(`Failed to load invoices (${res.status})`);
   const data = (await res.json()) as Paginated<SalesInvoice>;
@@ -79,7 +80,13 @@ export type AllocationSource = {
   available: string;
 };
 
-export type Allocation = { source_type: string; amount: string; date: string };
+export type Allocation = {
+  id: string;
+  source_type: string;
+  amount: string;
+  date: string;
+  reversed: boolean;
+};
 
 export async function listInvoiceSources(customerId: string): Promise<AllocationSource[]> {
   const res = await apiFetch(`/invoices/allocatable-sources/?customer=${customerId}`);
@@ -102,4 +109,25 @@ export async function allocateInvoice(
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(await detail(res, "Could not apply the allocation."));
+}
+
+export async function allocateInvoiceBulk(payload: {
+  customer: string;
+  source_type: string;
+  source_id: string;
+  lines: { invoice_id: string; amount: string }[];
+}): Promise<void> {
+  const res = await apiFetch("/invoices/allocate-bulk/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not apply the allocation."));
+}
+
+export async function unallocateInvoice(id: string, allocationId: string): Promise<void> {
+  const res = await apiFetch(`/invoices/${id}/unallocate/`, {
+    method: "POST",
+    body: JSON.stringify({ allocation_id: allocationId }),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not reverse the allocation."));
 }

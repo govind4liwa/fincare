@@ -101,3 +101,109 @@ def test_over_allocating_source_rejected(entity, customer, sr_tax, revenue_accou
         format="json",
     )
     assert res.status_code == 400
+
+
+def test_allocate_bulk_settles_multiple_invoices(entity, customer, sr_tax, revenue_account):
+    inv1 = _invoice(entity, customer, sr_tax, revenue_account)
+    inv2 = _invoice(entity, customer, sr_tax, revenue_account)
+    cn = CreditNote.objects.create(
+        entity=entity, customer=customer, credit_note_date=date(2026, 6, 16)
+    )
+    CreditNoteLine.objects.create(
+        credit_note=cn,
+        line_no=1,
+        revenue_account=revenue_account,
+        line_amount=Decimal("2000"),  # covers both 1000-line invoices in one source
+        tax_code=sr_tax,
+    )
+    cn = post_credit_note(cn)
+    client = _superuser()
+
+    res = client.post(
+        "/api/v1/invoices/allocate-bulk/",
+        {
+            "customer": str(customer.id),
+            "source_type": "credit_note",
+            "source_id": str(cn.id),
+            "lines": [
+                {"invoice_id": str(inv1.id), "amount": str(inv1.total)},
+                {"invoice_id": str(inv2.id), "amount": str(inv2.total)},
+            ],
+        },
+        format="json",
+    )
+    assert res.status_code == 200, res.content
+    inv1.refresh_from_db()
+    inv2.refresh_from_db()
+    assert inv1.balance == Decimal("0.00")
+    assert inv1.status == InvoiceStatus.PAID
+    assert inv2.balance == Decimal("0.00")
+    assert inv2.status == InvoiceStatus.PAID
+
+
+def test_allocate_bulk_rejects_total_exceeding_source(entity, customer, sr_tax, revenue_account):
+    inv1 = _invoice(entity, customer, sr_tax, revenue_account)
+    inv2 = _invoice(entity, customer, sr_tax, revenue_account)
+    cn = _credit_note(entity, customer, sr_tax, revenue_account)  # 525 available
+    client = _superuser()
+
+    res = client.post(
+        "/api/v1/invoices/allocate-bulk/",
+        {
+            "customer": str(customer.id),
+            "source_type": "credit_note",
+            "source_id": str(cn.id),
+            "lines": [
+                {"invoice_id": str(inv1.id), "amount": "300"},
+                {"invoice_id": str(inv2.id), "amount": "300"},
+            ],
+        },
+        format="json",
+    )
+    assert res.status_code == 400
+    inv1.refresh_from_db()
+    inv2.refresh_from_db()
+    # Rejected as a whole — nothing from the batch is applied.
+    assert inv1.balance == inv1.total
+    assert inv2.balance == inv2.total
+
+
+def test_unallocate_restores_balance_and_source(entity, customer, sr_tax, revenue_account):
+    inv = _invoice(entity, customer, sr_tax, revenue_account)
+    cn = _credit_note(entity, customer, sr_tax, revenue_account)  # 525 available
+    client = _superuser()
+
+    res = client.post(
+        f"/api/v1/invoices/{inv.id}/allocate/",
+        {"source_type": "credit_note", "source_id": str(cn.id), "amount": "525"},
+        format="json",
+    )
+    assert res.status_code == 200, res.content
+
+    res = client.get(f"/api/v1/invoices/{inv.id}/allocations/")
+    assert res.status_code == 200
+    allocation_id = res.data["allocations"][0]["id"]
+    assert res.data["allocations"][0]["reversed"] is False
+
+    res = client.post(
+        f"/api/v1/invoices/{inv.id}/unallocate/",
+        {"allocation_id": allocation_id},
+        format="json",
+    )
+    assert res.status_code == 200, res.content
+    inv.refresh_from_db()
+    assert inv.balance == inv.total
+    assert inv.status == InvoiceStatus.POSTED
+
+    res = client.get(f"/api/v1/invoices/allocatable-sources/?customer={customer.id}")
+    assert any(
+        s["source_id"] == str(cn.id) and s["available"] == "525.00" for s in res.data["sources"]
+    )
+
+    # Reversing the same allocation twice is rejected.
+    res = client.post(
+        f"/api/v1/invoices/{inv.id}/unallocate/",
+        {"allocation_id": allocation_id},
+        format="json",
+    )
+    assert res.status_code == 400
