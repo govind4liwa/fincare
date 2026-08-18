@@ -2,12 +2,15 @@ import { apiFetch } from "@/lib/api";
 
 export type Period = {
   id: string;
+  entity: string;
   name: string;
   fiscal_year: number;
   period_no: number;
   start_date: string;
   end_date: string;
-  status: string;
+  status: "open" | "closed" | "locked";
+  closed_at: string | null;
+  closed_by_email?: string;
 };
 
 export type ReportTable = {
@@ -34,6 +37,24 @@ export async function listPeriods(entityId?: string | null): Promise<Period[]> {
   if (!res.ok) throw new Error(`Failed to load periods (${res.status})`);
   return ((await res.json()) as Paginated<Period>).results;
 }
+
+async function periodDetail(res: Response, fallback: string): Promise<string> {
+  const data = (await res.json().catch(() => ({}))) as { detail?: unknown };
+  return typeof data.detail === "string" ? data.detail : fallback;
+}
+
+async function transitionPeriod(id: string, action: "close" | "reopen" | "lock"): Promise<Period> {
+  const res = await apiFetch(`/periods/${id}/${action}/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(await periodDetail(res, `Could not ${action} this period.`));
+  return (await res.json()) as Period;
+}
+
+export const closePeriod = (id: string) => transitionPeriod(id, "close");
+export const reopenPeriod = (id: string) => transitionPeriod(id, "reopen");
+export const lockPeriod = (id: string) => transitionPeriod(id, "lock");
 
 function reportQuery(entityId: string, periodId: string, basis: string, exportFmt: string) {
   // Use `export=` (not `format=`) — DRF reserves `format` for content negotiation.

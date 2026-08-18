@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
+  CalendarClock,
   CreditCard,
   FileMinus2,
   FilePlus2,
@@ -44,6 +45,7 @@ const NAV = [
   { href: "/loans", label: "Vehicle Loans", icon: CreditCard },
   { href: "/banking", label: "Bank Accounts", icon: Landmark },
   { href: "/reconcile", label: "Reconciliation", icon: Scale },
+  { href: "/periods", label: "Accounting Periods", icon: CalendarClock },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
