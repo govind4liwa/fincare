@@ -6,6 +6,8 @@ from apps.ledger.models import AccountingPeriod
 
 
 class AccountingPeriodSerializer(serializers.ModelSerializer):
+    closed_by_email = serializers.EmailField(source="closed_by.email", read_only=True)
+
     class Meta:
         model = AccountingPeriod
         fields = [
@@ -17,4 +19,6 @@ class AccountingPeriodSerializer(serializers.ModelSerializer):
             "start_date",
             "end_date",
             "status",
+            "closed_at",
+            "closed_by_email",
         ]
