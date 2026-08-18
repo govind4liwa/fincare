@@ -5,12 +5,18 @@ import { AlertTriangle, Check } from "lucide-react";
 import { useEntity } from "@/lib/entity-context";
 import { listAccounts, type Account } from "@/lib/accounts";
 import {
+  GRATUITY_RULE_DEFAULT,
+  SIF_LAYOUT_DEFAULT,
   canConfigureDriverAccounting,
+  canConfigureEntitySettings,
   getDriverAccountingConfig,
   isEligibleReceivableAccount,
+  listEntitySettings,
   saveDriverReceivableAccount,
   type DriverAccountingConfig,
+  type EntitySetting,
 } from "@/lib/settings";
+import { ConfigOverrideCard } from "./config-override-card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +35,8 @@ type Snapshot =
       accounts: Account[];
       config: DriverAccountingConfig | null;
       canWrite: boolean;
+      entitySettings: EntitySetting[];
+      canConfigureSettings: boolean;
     }
   | { entity: string; status: "error"; message: string };
 
@@ -48,10 +56,20 @@ export default function SettingsPage() {
       listAccounts(selectedId),
       getDriverAccountingConfig(selectedId),
       canConfigureDriverAccounting(),
+      listEntitySettings(selectedId),
+      canConfigureEntitySettings(),
     ])
-      .then(([accounts, config, canWrite]) => {
+      .then(([accounts, config, canWrite, entitySettings, canConfigureSettings]) => {
         if (!active) return;
-        setSnapshot({ entity: selectedId, status: "ok", accounts, config, canWrite });
+        setSnapshot({
+          entity: selectedId,
+          status: "ok",
+          accounts,
+          config,
+          canWrite,
+          entitySettings,
+          canConfigureSettings,
+        });
         setChoice(null);
       })
       .catch((e: unknown) => {
@@ -97,6 +115,12 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function onSettingSaved(next: EntitySetting) {
+    if (!loaded) return;
+    const others = loaded.entitySettings.filter((s) => s.key !== next.key);
+    setSnapshot({ ...loaded, entitySettings: [...others, next] });
   }
 
   if (!selectedId) {
@@ -215,6 +239,51 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {loaded && (
+        <>
+          <Card className="max-w-3xl">
+            <ConfigOverrideCard
+              key={`${selectedId}-gratuity_rule-${loaded.entitySettings.find((s) => s.key === "gratuity_rule")?.id ?? "new"}`}
+              title="Gratuity Rule"
+              description="UAE Labour Law end-of-service day-rates, read by payroll's gratuity accrual. Applies group-wide until overridden here."
+              settingKey="gratuity_rule"
+              defaults={GRATUITY_RULE_DEFAULT}
+              fields={[
+                { key: "days_per_year_first", label: "Days/year (first years)", type: "number" },
+                { key: "days_per_year_after", label: "Days/year (after)", type: "number" },
+                { key: "first_years", label: "First-years threshold", type: "number" },
+                { key: "month_days", label: "Month days (day-rate base)", type: "number" },
+                { key: "cap_years", label: "Cap (years' wage)", type: "number" },
+              ]}
+              entityId={selectedId}
+              row={loaded.entitySettings.find((s) => s.key === "gratuity_rule") ?? null}
+              canWrite={loaded.canConfigureSettings}
+              onSaved={onSettingSaved}
+            />
+          </Card>
+
+          <Card className="max-w-3xl">
+            <ConfigOverrideCard
+              key={`${selectedId}-sif_layout-${loaded.entitySettings.find((s) => s.key === "sif_layout")?.id ?? "new"}`}
+              title="SIF Layout"
+              description="WPS Salary Information File header tags, read when payroll exports a SIF batch."
+              settingKey="sif_layout"
+              defaults={SIF_LAYOUT_DEFAULT}
+              fields={[
+                { key: "version", label: "Version", type: "text" },
+                { key: "delimiter", label: "Delimiter", type: "text" },
+                { key: "scr_tag", label: "SCR tag", type: "text" },
+                { key: "edr_tag", label: "EDR tag", type: "text" },
+              ]}
+              entityId={selectedId}
+              row={loaded.entitySettings.find((s) => s.key === "sif_layout") ?? null}
+              canWrite={loaded.canConfigureSettings}
+              onSaved={onSettingSaved}
+            />
+          </Card>
+        </>
+      )}
     </div>
   );
 }
