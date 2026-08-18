@@ -120,11 +120,10 @@ def test_update_and_delete_disabled(entity, main_group):
         },
         format="json",
     ).data["id"]
-    assert (
-        client.patch(f"/api/v1/account-groups/{gid}/", {"name": "Y"}, format="json").status_code
-        == 405
-    )
-    assert client.delete(f"/api/v1/account-groups/{gid}/").status_code == 405
+    patched = client.patch(f"/api/v1/account-groups/{gid}/", {"name": "Y"}, format="json")
+    assert patched.status_code == 405
+    deleted = client.delete(f"/api/v1/account-groups/{gid}/")
+    assert deleted.status_code == 405
 
 
 def test_member_without_role_can_read_but_not_write(entity, main_group):
