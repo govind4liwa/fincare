@@ -1,4 +1,4 @@
-"""Report export endpoint — JSON and xlsx (via ?export=, not ?format=)."""
+"""Report export endpoint — JSON, xlsx and pdf (via ?export=, not ?format=)."""
 
 from django.contrib.auth import get_user_model
 
@@ -39,3 +39,14 @@ def test_report_xlsx_export(entity, period, post_entry):
     assert res.status_code == 200
     assert res["Content-Type"] == XLSX_MIME
     assert res.content[:2] == b"PK"  # xlsx is a zip archive
+
+
+def test_report_pdf_export(entity, period, post_entry):
+    post_entry(entity, [(BANK, 1000, 0), (REVENUE, 0, 1000)])
+    res = _client().get(
+        f"/api/v1/reports/TB/?entity_id={entity.id}&period_id={period.id}&export=pdf"
+    )
+    assert res.status_code == 200
+    assert res["Content-Type"] == "application/pdf"
+    assert res.content[:5] == b"%PDF-"
+    assert res["Content-Disposition"] == 'attachment; filename="TB.pdf"'

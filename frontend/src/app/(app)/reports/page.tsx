@@ -5,6 +5,7 @@ import { Download } from "lucide-react";
 import { useEntity } from "@/lib/entity-context";
 import {
   REPORTS,
+  downloadReportPdf,
   downloadReportXlsx,
   fetchReport,
   listPeriods,
@@ -25,7 +26,7 @@ export default function ReportsPage() {
   const [basis, setBasis] = useState("accrual");
   const [table, setTable] = useState<ReportTable | null>(null);
   const [error, setError] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<"xlsx" | "pdf" | null>(null);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -62,15 +63,16 @@ export default function ReportsPage() {
     };
   }, [selectedId, periodId, code, basis]);
 
-  async function onExport() {
+  async function onExport(format: "xlsx" | "pdf") {
     if (!selectedId || !periodId) return;
-    setExporting(true);
+    setExporting(format);
     try {
-      await downloadReportXlsx(code, selectedId, periodId, basis);
+      const download = format === "pdf" ? downloadReportPdf : downloadReportXlsx;
+      await download(code, selectedId, periodId, basis);
     } catch {
       setError(true);
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   }
 
@@ -143,11 +145,20 @@ export default function ReportsPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={onExport}
-              disabled={exporting || !periodId}
+              onClick={() => onExport("xlsx")}
+              disabled={exporting !== null || !periodId}
             >
               <Download className="h-4 w-4" />
-              {exporting ? "Exporting…" : "Excel"}
+              {exporting === "xlsx" ? "Exporting…" : "Excel"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onExport("pdf")}
+              disabled={exporting !== null || !periodId}
+            >
+              <Download className="h-4 w-4" />
+              {exporting === "pdf" ? "Exporting…" : "PDF"}
             </Button>
           </div>
 

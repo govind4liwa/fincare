@@ -1,6 +1,6 @@
-"""Report catalog API: build a report and return JSON or Excel.
+"""Report catalog API: build a report and return JSON, Excel, or PDF.
 
-GET /api/v1/reports/<code>/?entity_id=&period_id=&basis=&export=json|xlsx
+GET /api/v1/reports/<code>/?entity_id=&period_id=&basis=&export=json|xlsx|pdf
 
 Note: the export format uses ``export=`` (not ``format=``) — DRF reserves the
 ``format`` query param for content negotiation and would 404 on ``xlsx``.
@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.exports.services.pdf import report_to_pdf_bytes
 from apps.exports.services.xlsx import report_to_xlsx_bytes
 from apps.ledger.models import AccountingPeriod
 from apps.reports.models import ReportRun
@@ -25,6 +26,7 @@ from apps.tenants.views import accessible_entity_ids
 from apps.users.permissions import HasAnyRole
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+PDF_MIME = "application/pdf"
 logger = logging.getLogger(__name__)
 
 
@@ -59,6 +61,10 @@ class ReportView(APIView):
         if fmt == "xlsx":
             resp = HttpResponse(report_to_xlsx_bytes(report), content_type=XLSX_MIME)
             resp["Content-Disposition"] = f'attachment; filename="{code.upper()}.xlsx"'
+            return resp
+        if fmt == "pdf":
+            resp = HttpResponse(report_to_pdf_bytes(report), content_type=PDF_MIME)
+            resp["Content-Disposition"] = f'attachment; filename="{code.upper()}.pdf"'
             return resp
         return Response({"report": report, "run_id": str(run.id)})
 
