@@ -5,6 +5,7 @@ Documents post through the ledger engine; balances/aging are derived from these
 rows (the GL stays the source of truth).
 """
 
+from django.conf import settings
 from django.db import models
 
 from apps.core.models import BaseModel
@@ -184,6 +185,10 @@ class ReceiptAllocation(BaseModel):
     invoice = models.ForeignKey(SalesInvoice, on_delete=models.PROTECT, related_name="allocations")
     amount_allocated = models.DecimalField(max_digits=18, decimal_places=2)
     allocation_date = models.DateField()
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
 
     class Meta:
         ordering = ["-allocation_date", "-created_at"]
