@@ -1,9 +1,12 @@
-"""Create postable Charge-code accounts under an existing Sub group (ADR-0004).
+"""Create Main/Sub account groups and postable Charge-code accounts (ADR-0004).
 
-The full ``EEE-MMM-SSS-CCC`` code is composed here via ``coding`` — never typed
-by the user. ``nature`` is inherited from the Sub group; ``normal_balance``
-defaults from the Main band unless overridden. Codes are immutable once created,
-so editing an account never changes its code (corrections = a new account).
+Group and account codes are composed here via ``coding`` — never typed by the
+user. A Main group's segment fixes its nature (by first digit); a Sub group
+hangs off an existing Main and inherits that nature, so a whole branch stays
+one nature end to end — the same rule ``services.seed`` follows when it walks
+a category template. An account's ``nature`` is inherited from its Sub group;
+its ``normal_balance`` defaults from the Main band unless overridden. Codes
+are immutable once created — corrections are a new group/account, not an edit.
 """
 
 from django.db import IntegrityError, transaction
@@ -14,6 +17,46 @@ from apps.accounts.services import coding
 
 class AccountError(ValueError):
     """Raised when an account cannot be composed or created."""
+
+
+@transaction.atomic
+def create_group(entity, *, level, segment, name, parent=None):
+    """Create a Main (level 1) or Sub (level 2) account group."""
+    if level == 1:
+        if parent is not None:
+            raise AccountError("A Main group cannot have a parent.")
+        try:
+            code = coding.compose_group_code(entity.numeric_code, segment)
+            nature = coding.nature_for_main(segment)
+        except coding.CodeError as exc:
+            raise AccountError(str(exc)) from exc
+    elif level == 2:
+        if parent is None:
+            raise AccountError("A Sub group must have a parent Main group.")
+        if parent.entity_id != entity.id:
+            raise AccountError("The parent group belongs to a different entity.")
+        if parent.level != 1:
+            raise AccountError("A Sub group's parent must be a Main group.")
+        try:
+            code = coding.compose_group_code(entity.numeric_code, parent.segment, segment)
+        except coding.CodeError as exc:
+            raise AccountError(str(exc)) from exc
+        nature = parent.nature
+    else:
+        raise AccountError("Group level must be 1 (Main) or 2 (Sub).")
+
+    try:
+        return AccountGroup.objects.create(
+            entity=entity,
+            level=level,
+            segment=segment,
+            parent=parent,
+            code=code,
+            name=name,
+            nature=nature,
+        )
+    except IntegrityError as exc:
+        raise AccountError(f"A group with code {code} already exists.") from exc
 
 
 def _main_sub_segments(sub_group: AccountGroup):

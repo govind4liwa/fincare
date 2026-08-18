@@ -31,6 +31,20 @@ export type AccountGroup = {
   code: string;
   name: string;
   nature: Nature;
+  parent?: string | null;
+};
+
+// First digit of a Main group's segment fixes its nature (ADR-0004) — mirrors
+// apps.accounts.services.coding._NATURE_BY_FIRST_DIGIT for a live client preview;
+// the server is the source of truth and re-derives this on create.
+export const NATURE_BY_FIRST_DIGIT: Record<string, Nature> = {
+  "1": "asset",
+  "2": "liability",
+  "3": "equity",
+  "4": "income",
+  "5": "expense",
+  "6": "expense",
+  "7": "expense",
 };
 
 type Paginated<T> = { count: number; next: string | null; previous: string | null; results: T[] };
