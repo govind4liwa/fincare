@@ -56,22 +56,41 @@ export async function fetchReport(
   return ((await res.json()) as { report: ReportTable }).report;
 }
 
-/** Fetch the xlsx (auth-protected) as a blob and trigger a browser download. */
-export async function downloadReportXlsx(
+/** Fetch a report export (auth-protected) as a blob and trigger a browser download. */
+async function downloadReport(
   code: string,
   entityId: string,
   periodId: string,
   basis: string,
+  exportFmt: "xlsx" | "pdf",
 ): Promise<void> {
-  const res = await apiFetch(`/reports/${code}/?${reportQuery(entityId, periodId, basis, "xlsx")}`);
+  const res = await apiFetch(`/reports/${code}/?${reportQuery(entityId, periodId, basis, exportFmt)}`);
   if (!res.ok) throw new Error("Export failed");
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${code}.xlsx`;
+  a.download = `${code}.${exportFmt}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+export function downloadReportXlsx(
+  code: string,
+  entityId: string,
+  periodId: string,
+  basis: string,
+): Promise<void> {
+  return downloadReport(code, entityId, periodId, basis, "xlsx");
+}
+
+export function downloadReportPdf(
+  code: string,
+  entityId: string,
+  periodId: string,
+  basis: string,
+): Promise<void> {
+  return downloadReport(code, entityId, periodId, basis, "pdf");
 }
