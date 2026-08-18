@@ -2,11 +2,21 @@
 
 from rest_framework import serializers
 
-from apps.settings.models import DriverAccountingConfig
+from apps.settings.models import DriverAccountingConfig, EntitySetting
 from apps.settings.services.driver_accounting import (
     receivable_account_error,
     set_driver_receivable_account,
 )
+
+
+class EntitySettingSerializer(serializers.ModelSerializer):
+    """Free-form per-entity key/value override (e.g. payroll's
+    ``gratuity_rule``/``sif_layout`` — apps.payroll.services.config). Generic
+    storage: a consuming app can introduce a new key without a migration here."""
+
+    class Meta:
+        model = EntitySetting
+        fields = ["id", "entity", "key", "value"]
 
 
 class DriverAccountingConfigSerializer(serializers.ModelSerializer):
