@@ -79,7 +79,9 @@ def test_allocate_debit_note_reduces_balance(entity, supplier, sr_tax, expense_a
 def test_allocate_bulk_settles_multiple_bills(entity, supplier, sr_tax, expense_account):
     bill1 = _bill(entity, supplier, sr_tax, expense_account)
     bill2 = _bill(entity, supplier, sr_tax, expense_account)
-    dn = DebitNote.objects.create(entity=entity, supplier=supplier, debit_note_date=date(2026, 6, 16))
+    dn = DebitNote.objects.create(
+        entity=entity, supplier=supplier, debit_note_date=date(2026, 6, 16)
+    )
     DebitNoteLine.objects.create(
         debit_note=dn,
         line_no=1,
