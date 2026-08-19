@@ -31,6 +31,9 @@ api_v1_patterns = [
     path(
         "", include("apps.tax.urls")
     ),  # /api/v1/{tax-rate-history,vat-returns,corporate-tax-returns}/
+    path(
+        "", include("apps.payroll.urls")
+    ),  # /api/v1/{salary-components,employees,employee-salaries,payroll-runs,payslips}/
     path("reports/", include("apps.reports.urls")),  # /api/v1/reports/<code>/
     # Future:
     # path("users/", include("apps.users.urls")),
