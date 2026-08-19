@@ -197,3 +197,56 @@ export async function payRun(id: string, bankAccountId: string): Promise<Run> {
   if (!res.ok) throw new Error(await detail(res, "Could not pay this run."));
   return (await res.json()) as Run;
 }
+
+export type Advance = {
+  id: string;
+  entity: string;
+  employee: string;
+  employee_code: string;
+  employee_name: string;
+  advance_date: string;
+  amount: string;
+  installments: number;
+  installment_amount: string;
+  recovered_amount: string;
+  balance: string;
+  advance_account: string;
+  bank_account: string | null;
+  journal_entry: string | null;
+  status: "open" | "recovering" | "cleared";
+};
+
+export async function listAdvances(entityId?: string | null): Promise<Advance[]> {
+  const params = new URLSearchParams({ limit: "200", ordering: "-advance_date" });
+  if (entityId) params.set("entity", entityId);
+  const res = await apiFetch(`/payroll-advances/?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed to load advances (${res.status})`);
+  return ((await res.json()) as Paginated<Advance>).results;
+}
+
+export async function createAdvance(payload: {
+  entity: string;
+  employee: string;
+  advance_date: string;
+  amount: string;
+  installments: number;
+  installment_amount: string;
+  advance_account: string;
+  bank_account: string;
+}): Promise<Advance> {
+  const res = await apiFetch("/payroll-advances/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not create this advance."));
+  return (await res.json()) as Advance;
+}
+
+export async function payAdvance(id: string): Promise<Advance> {
+  const res = await apiFetch(`/payroll-advances/${id}/pay/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not pay this advance."));
+  return (await res.json()) as Advance;
+}

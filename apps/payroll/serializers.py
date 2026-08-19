@@ -1,9 +1,17 @@
 """DRF serializers for payroll: salary components, employees, salary structure,
-and the run -> payslip lifecycle."""
+the run -> payslip lifecycle, and salary advances."""
 
 from rest_framework import serializers
 
-from apps.payroll.models import Employee, EmployeeSalary, Payslip, PayslipLine, Run, SalaryComponent
+from apps.payroll.models import (
+    Advance,
+    Employee,
+    EmployeeSalary,
+    Payslip,
+    PayslipLine,
+    Run,
+    SalaryComponent,
+)
 
 
 class SalaryComponentSerializer(serializers.ModelSerializer):
@@ -149,3 +157,34 @@ class RunSerializer(serializers.ModelSerializer):
             "approved_by",
             "payslips",
         ]
+
+
+class AdvanceSerializer(serializers.ModelSerializer):
+    """A draft names employee/amount/installments (+ optional installment_amount
+    for an uneven split — left blank/zero, `pay` computes an even split);
+    `pay` books DR Staff Advances / CR Bank and sets recovered_amount/balance.
+    Recovery afterwards happens automatically inside a payroll run's `build`."""
+
+    employee_code = serializers.CharField(source="employee.code", read_only=True)
+    employee_name = serializers.CharField(source="employee.name", read_only=True)
+
+    class Meta:
+        model = Advance
+        fields = [
+            "id",
+            "entity",
+            "employee",
+            "employee_code",
+            "employee_name",
+            "advance_date",
+            "amount",
+            "installments",
+            "installment_amount",
+            "recovered_amount",
+            "balance",
+            "advance_account",
+            "bank_account",
+            "journal_entry",
+            "status",
+        ]
+        read_only_fields = ["recovered_amount", "balance", "journal_entry", "status"]
