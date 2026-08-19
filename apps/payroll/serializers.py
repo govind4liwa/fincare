@@ -1,5 +1,7 @@
 """DRF serializers for payroll: salary components, employees, salary structure,
-the run -> payslip lifecycle, and salary advances."""
+the run -> payslip lifecycle, salary advances, and WPS/SIF batches."""
+
+import logging
 
 from rest_framework import serializers
 
@@ -11,7 +13,13 @@ from apps.payroll.models import (
     PayslipLine,
     Run,
     SalaryComponent,
+    WpsBatch,
+    WpsRecord,
 )
+from apps.payroll.services.engine import PayrollError
+from apps.payroll.services.wps import generate_wps
+
+logger = logging.getLogger(__name__)
 
 
 class SalaryComponentSerializer(serializers.ModelSerializer):
@@ -188,3 +196,78 @@ class AdvanceSerializer(serializers.ModelSerializer):
             "status",
         ]
         read_only_fields = ["recovered_amount", "balance", "journal_entry", "status"]
+
+
+class WpsRecordSerializer(serializers.ModelSerializer):
+    employee_code = serializers.CharField(source="employee.code", read_only=True)
+    employee_name = serializers.CharField(source="employee.name", read_only=True)
+
+    class Meta:
+        model = WpsRecord
+        fields = [
+            "id",
+            "employee",
+            "employee_code",
+            "employee_name",
+            "mol_personal_no",
+            "bank_routing_code",
+            "iban",
+            "pay_start_date",
+            "pay_end_date",
+            "working_days",
+            "fixed_amount",
+            "variable_amount",
+            "leave_days",
+            "notes",
+        ]
+
+
+class WpsBatchSerializer(serializers.ModelSerializer):
+    """Create names run/employer_eid/employer_bank_routing; `generate_wps`
+    builds one record per WPS-paid employee on that run's payslips and the
+    batch totals — every other field here is that derived output."""
+
+    records = WpsRecordSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = WpsBatch
+        fields = [
+            "id",
+            "run",
+            "employer_eid",
+            "employer_bank_routing",
+            "salary_month",
+            "total_records",
+            "total_salary",
+            "fixed_total",
+            "variable_total",
+            "sif_file_ref",
+            "status",
+            "generated_at",
+            "records",
+        ]
+        read_only_fields = [
+            "salary_month",
+            "total_records",
+            "total_salary",
+            "fixed_total",
+            "variable_total",
+            "sif_file_ref",
+            "status",
+            "generated_at",
+            "records",
+        ]
+
+    def create(self, validated_data):
+        try:
+            return generate_wps(
+                validated_data["run"],
+                employer_eid=validated_data["employer_eid"],
+                employer_bank_routing=validated_data["employer_bank_routing"],
+                user=self.context["request"].user,
+            )
+        except PayrollError as exc:
+            logger.warning("WPS batch generation rejected: %s", exc)
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Could not generate the WPS batch for this run."]}
+            ) from exc
