@@ -1,10 +1,14 @@
-"""DRF serializers for fleet vehicles, vehicle loans, and EMI schedules."""
+"""DRF serializers for fleet vehicles, vehicle loans, EMI schedules, vehicle
+documents, and depreciation runs."""
 
 from rest_framework import serializers
 
 from apps.fleet.models import (
+    DepreciationLine,
+    DepreciationRun,
     LoanSchedule,
     Vehicle,
+    VehicleDocument,
     VehicleLoan,
     VehicleLoanInstallment,
 )
@@ -133,3 +137,55 @@ class LoanScheduleSerializer(serializers.ModelSerializer):
 
     def get_posted_count(self, obj):
         return sum(1 for i in obj.installments.all() if i.status == "posted")
+
+
+class VehicleDocumentSerializer(serializers.ModelSerializer):
+    vehicle_code = serializers.CharField(source="vehicle.code", read_only=True)
+    days_to_expiry = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VehicleDocument
+        fields = [
+            "id",
+            "vehicle",
+            "vehicle_code",
+            "doc_type",
+            "doc_no",
+            "issue_date",
+            "expiry_date",
+            "note",
+            "days_to_expiry",
+        ]
+
+    def get_days_to_expiry(self, obj):
+        return obj.days_to_expiry()
+
+
+class DepreciationLineSerializer(serializers.ModelSerializer):
+    vehicle_code = serializers.CharField(source="vehicle.code", read_only=True)
+
+    class Meta:
+        model = DepreciationLine
+        fields = ["id", "vehicle", "vehicle_code", "amount"]
+
+
+class DepreciationRunSerializer(serializers.ModelSerializer):
+    """A draft run has no lines yet — `post_depreciation_run` builds them from
+    active vehicles with depreciation configured, in the same call that posts."""
+
+    lines = DepreciationLineSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = DepreciationRun
+        fields = [
+            "id",
+            "entity",
+            "run_no",
+            "run_date",
+            "period_label",
+            "total_amount",
+            "status",
+            "journal_entry",
+            "lines",
+        ]
+        read_only_fields = ["run_no", "total_amount", "status", "journal_entry"]
