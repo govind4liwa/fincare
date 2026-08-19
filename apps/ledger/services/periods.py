@@ -8,7 +8,7 @@ immutability CLAUDE.md §4.5 applies to posted entries, applied here to the
 period itself.
 """
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.audit.services import record as audit_record
@@ -19,6 +19,41 @@ Status = AccountingPeriod.Status
 
 class PeriodError(ValueError):
     """Raised when a period cannot transition to the requested status."""
+
+
+@transaction.atomic
+def create_period(entity, *, fiscal_year, period_no, name, start_date, end_date, user=None):
+    """Open a new accounting period. Dates must not overlap an existing one
+    for the entity — posting resolves an entry's period purely from its date,
+    so two overlapping periods would make that resolution ambiguous."""
+    if start_date > end_date:
+        raise PeriodError("start_date must be on or before end_date.")
+    overlap = AccountingPeriod.objects.filter(
+        entity=entity, start_date__lte=end_date, end_date__gte=start_date
+    ).exists()
+    if overlap:
+        raise PeriodError("This period overlaps an existing period for the entity.")
+
+    try:
+        period = AccountingPeriod.objects.create(
+            entity=entity,
+            fiscal_year=fiscal_year,
+            period_no=period_no,
+            name=name,
+            start_date=start_date,
+            end_date=end_date,
+            status=Status.OPEN,
+        )
+    except IntegrityError as exc:
+        raise PeriodError(f"Entity already has a period {fiscal_year}/{period_no}.") from exc
+    audit_record(
+        action="create",
+        instance=period,
+        actor=user,
+        entity_id=period.entity_id,
+        message=f"Opened period {period.name} ({start_date}..{end_date})",
+    )
+    return period
 
 
 @transaction.atomic
