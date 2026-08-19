@@ -24,6 +24,9 @@ api_v1_patterns = [
     path(
         "", include("apps.banking.urls")
     ),  # /api/v1/{bank-accounts,bank-statements,reconciliations}/
+    path(
+        "", include("apps.platforms.urls")
+    ),  # /api/v1/{platforms,earning-imports,platform-settlements}/
     path("reports/", include("apps.reports.urls")),  # /api/v1/reports/<code>/
     # Future:
     # path("users/", include("apps.users.urls")),
