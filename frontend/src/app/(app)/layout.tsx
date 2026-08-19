@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
+  Banknote,
   CalendarClock,
   Calculator,
   CreditCard,
@@ -14,8 +15,10 @@ import {
   FileText,
   HandCoins,
   HandHeart,
+  IdCard,
   Landmark,
   LayoutDashboard,
+  ListTree,
   LogOut,
   MapPin,
   Percent,
@@ -58,6 +61,9 @@ const NAV = [
   { href: "/periods", label: "Accounting Periods", icon: CalendarClock },
   { href: "/vat-returns", label: "VAT Returns", icon: Percent },
   { href: "/corporate-tax-returns", label: "Corporate Tax", icon: Calculator },
+  { href: "/employees", label: "Employees", icon: IdCard },
+  { href: "/salary-components", label: "Salary Components", icon: ListTree },
+  { href: "/payroll-runs", label: "Payroll Runs", icon: Banknote },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
