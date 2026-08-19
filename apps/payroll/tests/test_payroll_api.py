@@ -11,7 +11,8 @@ from rest_framework.test import APIClient
 
 import pytest
 
-from apps.payroll.models import ComponentType, Run, RunStatus, SalaryComponent
+from apps.payroll.models import Advance, ComponentType, Run, RunStatus, SalaryComponent
+from apps.payroll.tests.conftest import STAFF_ADVANCES
 from apps.tenants.models import UserEntityMembership
 
 pytestmark = pytest.mark.django_db
@@ -137,6 +138,96 @@ def test_run_write_requires_role(entity):
     res = client.post(
         "/api/v1/payroll-runs/",
         {"entity": str(entity.id), "salary_month": "2026-06", "run_date": "2026-06-30"},
+        format="json",
+    )
+    assert res.status_code == 403
+
+
+def test_create_advance_then_pay(entity, employee, acct, bank_enbd):
+    client = _client(entity, "accountant")
+    res = client.post(
+        "/api/v1/payroll-advances/",
+        {
+            "entity": str(entity.id),
+            "employee": str(employee.id),
+            "advance_date": "2026-06-01",
+            "amount": "1200.00",
+            "installments": 3,
+            "advance_account": str(acct(STAFF_ADVANCES).id),
+            "bank_account": str(bank_enbd.id),
+        },
+        format="json",
+    )
+    assert res.status_code == 201, res.content
+    advance_id = res.data["id"]
+    assert res.data["status"] == Advance.Status.OPEN
+    assert res.data["balance"] == "0.00"  # not meaningful until paid
+
+    res = client.post(f"/api/v1/payroll-advances/{advance_id}/pay/")
+    assert res.status_code == 200, res.content
+    assert res.data["balance"] == "1200.00"
+    assert res.data["installment_amount"] == "400.00"  # even split, auto-computed
+
+    advance = Advance.objects.get(id=advance_id)
+    je = advance.journal_entry
+    assert je.total_debit == je.total_credit == Decimal("1200.00")
+    lines = {ln.account.code: (ln.debit, ln.credit) for ln in je.lines.all()}
+    assert lines[STAFF_ADVANCES] == (Decimal("1200.00"), Decimal("0.00"))
+    assert lines[bank_enbd.gl_account.code] == (Decimal("0.00"), Decimal("1200.00"))
+
+
+def test_pay_advance_requires_bank_account(entity, employee, acct):
+    client = _client(entity, "accountant")
+    res = client.post(
+        "/api/v1/payroll-advances/",
+        {
+            "entity": str(entity.id),
+            "employee": str(employee.id),
+            "advance_date": "2026-06-01",
+            "amount": "1200.00",
+            "installments": 3,
+            "advance_account": str(acct(STAFF_ADVANCES).id),
+        },
+        format="json",
+    )
+    advance_id = res.data["id"]
+    res = client.post(f"/api/v1/payroll-advances/{advance_id}/pay/")
+    assert res.status_code == 400
+
+
+def test_advance_cannot_be_paid_twice(entity, employee, acct, bank_enbd):
+    client = _client(entity, "accountant")
+    res = client.post(
+        "/api/v1/payroll-advances/",
+        {
+            "entity": str(entity.id),
+            "employee": str(employee.id),
+            "advance_date": "2026-06-01",
+            "amount": "600.00",
+            "installments": 1,
+            "advance_account": str(acct(STAFF_ADVANCES).id),
+            "bank_account": str(bank_enbd.id),
+        },
+        format="json",
+    )
+    advance_id = res.data["id"]
+    first = client.post(f"/api/v1/payroll-advances/{advance_id}/pay/")
+    assert first.status_code == 200, first.content
+    second = client.post(f"/api/v1/payroll-advances/{advance_id}/pay/")
+    assert second.status_code == 400
+
+
+def test_advance_write_requires_role(entity, employee, acct):
+    client = _client(entity, role=None)
+    res = client.post(
+        "/api/v1/payroll-advances/",
+        {
+            "entity": str(entity.id),
+            "employee": str(employee.id),
+            "advance_date": "2026-06-01",
+            "amount": "600.00",
+            "advance_account": str(acct(STAFF_ADVANCES).id),
+        },
         format="json",
     )
     assert res.status_code == 403

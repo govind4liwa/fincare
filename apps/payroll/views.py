@@ -1,8 +1,7 @@
-"""Payroll API: salary components, employees + salary structure, and the
-run -> payslip lifecycle (build -> post accrual -> pay).
+"""Payroll API: salary components, employees + salary structure, the
+run -> payslip lifecycle (build -> post accrual -> pay), and salary advances.
 
-Advances, WPS/SIF export, and gratuity/leave are separate follow-up slices —
-this covers the core "run payroll" flow only.
+WPS/SIF export and gratuity/leave are separate follow-up slices.
 """
 
 import logging
@@ -16,14 +15,16 @@ from rest_framework.response import Response
 
 from apps.accounts.views import EntityScopedMasterViewSet, scope_to_entities
 from apps.banking.models import BankAccount
-from apps.payroll.models import Employee, EmployeeSalary, Payslip, Run, SalaryComponent
+from apps.payroll.models import Advance, Employee, EmployeeSalary, Payslip, Run, SalaryComponent
 from apps.payroll.serializers import (
+    AdvanceSerializer,
     EmployeeSalarySerializer,
     EmployeeSerializer,
     PayslipSerializer,
     RunSerializer,
     SalaryComponentSerializer,
 )
+from apps.payroll.services.advance import pay_advance
 from apps.payroll.services.engine import PayrollError
 from apps.payroll.services.run import build_run, pay_run, post_run
 from apps.tenants.views import accessible_entity_ids
@@ -135,6 +136,30 @@ class RunViewSet(EntityScopedMasterViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(self.get_serializer(run).data)
+
+
+class AdvanceViewSet(EntityScopedMasterViewSet):
+    queryset = Advance.objects.select_related("employee", "advance_account", "bank_account")
+    serializer_class = AdvanceSerializer
+    filterset_fields = ["entity", "employee", "status"]
+    ordering_fields = ["advance_date"]
+    ordering = ["-advance_date"]
+
+    @action(detail=True, methods=["post"], url_path="pay")
+    def pay_action(self, request, pk=None):
+        advance = self.get_object()
+        try:
+            pay_advance(advance, user=request.user)
+        except PayrollError:
+            logger.exception("Advance payment failed for %s", advance.pk)
+            return Response(
+                {
+                    "detail": "Could not pay — the advance must be open and unpaid, with a "
+                    "bank account and a positive amount."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self.get_serializer(advance).data)
 
 
 class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
