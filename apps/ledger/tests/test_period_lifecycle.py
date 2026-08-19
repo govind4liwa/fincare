@@ -98,3 +98,98 @@ def test_member_without_role_cannot_close(period):
     client = _client(period.entity, role=None)
     res = client.post(f"/api/v1/periods/{period.id}/close/")
     assert res.status_code == 403
+
+
+def test_create_period(period):
+    client = _client(period.entity, "accountant")
+    res = client.post(
+        "/api/v1/periods/",
+        {
+            "entity": str(period.entity_id),
+            "fiscal_year": 2026,
+            "period_no": 8,
+            "name": "Aug-2026",
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-31",
+        },
+        format="json",
+    )
+    assert res.status_code == 201, res.content
+    assert res.data["status"] == AccountingPeriod.Status.OPEN
+    assert res.data["closed_at"] is None
+
+
+def test_create_rejects_overlapping_period(period):
+    client = _client(period.entity, "accountant")
+    res = client.post(
+        "/api/v1/periods/",
+        {
+            "entity": str(period.entity_id),
+            "fiscal_year": 2026,
+            "period_no": 71,
+            "name": "Overlap",
+            "start_date": "2026-07-15",
+            "end_date": "2026-08-15",
+        },
+        format="json",
+    )
+    assert res.status_code == 400
+
+
+def test_create_rejects_start_after_end(period):
+    client = _client(period.entity, "accountant")
+    res = client.post(
+        "/api/v1/periods/",
+        {
+            "entity": str(period.entity_id),
+            "fiscal_year": 2026,
+            "period_no": 8,
+            "name": "Backwards",
+            "start_date": "2026-08-31",
+            "end_date": "2026-08-01",
+        },
+        format="json",
+    )
+    assert res.status_code == 400
+
+
+def test_create_rejects_duplicate_fiscal_year_period_no(period):
+    client = _client(period.entity, "accountant")
+    res = client.post(
+        "/api/v1/periods/",
+        {
+            "entity": str(period.entity_id),
+            "fiscal_year": 2026,
+            "period_no": 7,
+            "name": "Dup",
+            "start_date": "2027-01-01",
+            "end_date": "2027-01-31",
+        },
+        format="json",
+    )
+    assert res.status_code == 400
+
+
+def test_create_requires_role(period):
+    client = _client(period.entity, role=None)
+    res = client.post(
+        "/api/v1/periods/",
+        {
+            "entity": str(period.entity_id),
+            "fiscal_year": 2026,
+            "period_no": 8,
+            "name": "Aug-2026",
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-31",
+        },
+        format="json",
+    )
+    assert res.status_code == 403
+
+
+def test_update_and_delete_disabled(period):
+    client = _client(period.entity, "admin")
+    patched = client.patch(f"/api/v1/periods/{period.id}/", {"name": "X"}, format="json")
+    assert patched.status_code == 405
+    deleted = client.delete(f"/api/v1/periods/{period.id}/")
+    assert deleted.status_code == 405
