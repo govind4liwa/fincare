@@ -39,8 +39,15 @@ export async function listPeriods(entityId?: string | null): Promise<Period[]> {
 }
 
 async function periodDetail(res: Response, fallback: string): Promise<string> {
-  const data = (await res.json().catch(() => ({}))) as { detail?: unknown };
-  return typeof data.detail === "string" ? data.detail : fallback;
+  const data = (await res.json().catch(() => ({}))) as {
+    detail?: unknown;
+    non_field_errors?: unknown;
+  };
+  if (typeof data.detail === "string") return data.detail;
+  if (Array.isArray(data.non_field_errors) && typeof data.non_field_errors[0] === "string") {
+    return data.non_field_errors[0];
+  }
+  return fallback;
 }
 
 async function transitionPeriod(id: string, action: "close" | "reopen" | "lock"): Promise<Period> {
@@ -55,6 +62,19 @@ async function transitionPeriod(id: string, action: "close" | "reopen" | "lock")
 export const closePeriod = (id: string) => transitionPeriod(id, "close");
 export const reopenPeriod = (id: string) => transitionPeriod(id, "reopen");
 export const lockPeriod = (id: string) => transitionPeriod(id, "lock");
+
+export async function createPeriod(payload: {
+  entity: string;
+  fiscal_year: number;
+  period_no: number;
+  name: string;
+  start_date: string;
+  end_date: string;
+}): Promise<Period> {
+  const res = await apiFetch("/periods/", { method: "POST", body: JSON.stringify(payload) });
+  if (!res.ok) throw new Error(await periodDetail(res, "Could not create this period."));
+  return (await res.json()) as Period;
+}
 
 function reportQuery(entityId: string, periodId: string, basis: string, exportFmt: string) {
   // Use `export=` (not `format=`) — DRF reserves `format` for content negotiation.

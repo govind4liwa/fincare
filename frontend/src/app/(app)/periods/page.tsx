@@ -1,10 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Lock, Unlock, XCircle } from "lucide-react";
 import { useEntity } from "@/lib/entity-context";
-import { closePeriod, listPeriods, lockPeriod, reopenPeriod, type Period } from "@/lib/reports";
+import {
+  closePeriod,
+  createPeriod,
+  listPeriods,
+  lockPeriod,
+  reopenPeriod,
+  type Period,
+} from "@/lib/reports";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -14,12 +23,52 @@ const STATUS_STYLE: Record<Period["status"], string> = {
   locked: "bg-destructive/10 text-destructive",
 };
 
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/** Derive a calendar-month period's fields from a "YYYY-MM" picker value —
+ * covers the common case (fiscal year = calendar year, one period per
+ * month); anything else still exists in the model, just not in this quick
+ * form. */
+function monthDefaults(monthStr: string) {
+  const [year, month] = monthStr.split("-").map(Number);
+  const start_date = `${monthStr}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const end_date = `${monthStr}-${String(lastDay).padStart(2, "0")}`;
+  const name = `${MONTH_NAMES[month - 1]}-${year}`;
+  return { fiscal_year: year, period_no: month, start_date, end_date, name };
+}
+
 export default function PeriodsPage() {
   const { selectedId, selectedEntity } = useEntity();
   const [periods, setPeriods] = useState<Period[]>([]);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
+
+  const [month, setMonth] = useState("");
+  const [name, setName] = useState("");
+  const [nameTouched, setNameTouched] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  const defaults = useMemo(() => (month ? monthDefaults(month) : null), [month]);
+
+  function pickMonth(value: string) {
+    setMonth(value);
+    if (!nameTouched && value) setName(monthDefaults(value).name);
+  }
 
   const reload = useCallback(async () => {
     if (!selectedId) return;
@@ -55,6 +104,23 @@ export default function PeriodsPage() {
     }
   }
 
+  async function create() {
+    if (!selectedId || !defaults) return setError("Pick a month first.");
+    setCreating(true);
+    setError("");
+    try {
+      await createPeriod({ entity: selectedId, ...defaults, name });
+      await reload();
+      setMonth("");
+      setName("");
+      setNameTouched(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   if (!selectedId) {
     return (
       <Card>
@@ -75,6 +141,35 @@ export default function PeriodsPage() {
           {selectedEntity?.trade_name || selectedEntity?.legal_name}
         </p>
       </div>
+
+      <Card className="max-w-xl">
+        <CardContent className="flex flex-wrap items-end gap-3 py-5">
+          <div className="flex flex-col gap-1.5">
+            <Label>Month</Label>
+            <Input type="month" value={month} onChange={(e) => pickMonth(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Name</Label>
+            <Input
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setNameTouched(true);
+              }}
+              className="w-32"
+            />
+          </div>
+          <Button size="sm" onClick={create} disabled={creating || !month}>
+            {creating ? "Creating…" : "New period"}
+          </Button>
+          {defaults && (
+            <span className="text-xs text-muted-foreground">
+              {defaults.start_date} – {defaults.end_date} · FY{defaults.fiscal_year} #
+              {defaults.period_no}
+            </span>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-0">
@@ -164,9 +259,10 @@ export default function PeriodsPage() {
       </Card>
 
       <p className="text-xs text-muted-foreground">
+        A new period opens directly — nothing can post into a date until its period exists.
         Closing blocks new postings into a period but can be reopened for a correction. Locking is
-        one-way — a locked period never reopens. Locking needs a manager or admin role; close/reopen
-        need an accounting role.
+        one-way — a locked period never reopens. Creating and close/reopen need an accounting
+        role; locking needs a manager or admin role.
       </p>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
