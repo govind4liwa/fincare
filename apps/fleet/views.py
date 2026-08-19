@@ -13,15 +13,26 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.views import EntityScopedMasterViewSet, scope_to_entities
-from apps.fleet.models import LoanSchedule, Vehicle, VehicleLoan, VehicleLoanInstallment
+from apps.fleet.models import (
+    DepreciationRun,
+    LoanSchedule,
+    Vehicle,
+    VehicleDocument,
+    VehicleLoan,
+    VehicleLoanInstallment,
+)
 from apps.fleet.serializers import (
+    DepreciationRunSerializer,
     LoanInstallmentSerializer,
     LoanScheduleSerializer,
+    VehicleDocumentSerializer,
     VehicleLoanSerializer,
     VehicleSerializer,
 )
 from apps.fleet.services import schedule as schedule_service
-from apps.fleet.services.post import FleetError, post_emi
+from apps.fleet.services.alerts import expiring_documents
+from apps.fleet.services.post import FleetError, post_depreciation_run, post_emi
+from apps.tenants.models import Entity
 from apps.users.permissions import ReadAnyWriteRole
 
 logger = logging.getLogger(__name__)
@@ -155,3 +166,61 @@ class LoanInstallmentViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(self.get_serializer(installment).data)
+
+
+class VehicleDocumentViewSet(EntityScopedMasterViewSet):
+    """Vehicle documents (registration/insurance/etc.), scoped through the
+    parent vehicle. Each renewal is a new row — an expired document stays as
+    renewal history rather than being edited in place."""
+
+    queryset = VehicleDocument.objects.select_related("vehicle")
+    serializer_class = VehicleDocumentSerializer
+    entity_field = "vehicle__entity_id"
+    filterset_fields = ["vehicle", "doc_type"]
+    ordering_fields = ["expiry_date"]
+    ordering = ["expiry_date"]
+
+    @action(detail=False, methods=["get"], url_path="expiring")
+    def expiring(self, request):
+        entity_id = request.query_params.get("entity")
+        if not entity_id:
+            return Response({"detail": "entity is required."}, status=status.HTTP_400_BAD_REQUEST)
+        entity = scope_to_entities(Entity.objects.filter(id=entity_id), request.user, "id").first()
+        if entity is None:
+            return Response({"documents": []})
+        within_days = int(request.query_params.get("within_days", 30))
+        rows = expiring_documents(entity, within_days=within_days)
+        return Response({"documents": VehicleDocumentSerializer(rows, many=True).data})
+
+
+class DepreciationRunViewSet(viewsets.ModelViewSet):
+    """Periodic depreciation runs. `post` builds lines from active vehicles
+    with depreciation configured and posts one balanced JE (per-vehicle dim)."""
+
+    serializer_class = DepreciationRunSerializer
+    permission_classes = [IsAuthenticated, ReadAnyWriteRole]
+    required_roles = ROLES
+    filterset_fields = ["entity", "status"]
+    ordering_fields = ["run_date"]
+    ordering = ["-run_date"]
+
+    def get_queryset(self):
+        return scope_to_entities(
+            DepreciationRun.objects.prefetch_related("lines__vehicle"), self.request.user
+        )
+
+    @action(detail=True, methods=["post"], url_path="post")
+    def post_run(self, request, pk=None):
+        run = self.get_object()
+        try:
+            post_depreciation_run(run, user=request.user)
+        except FleetError:
+            logger.exception("Depreciation run posting failed for %s", run.pk)
+            return Response(
+                {
+                    "detail": "Could not post this run — check that active vehicles have "
+                    "depreciation accounts configured."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self.get_serializer(run).data)
