@@ -27,6 +27,7 @@ api_v1_patterns = [
     path(
         "", include("apps.platforms.urls")
     ),  # /api/v1/{platforms,earning-imports,platform-settlements}/
+    path("", include("apps.bookings.urls")),  # /api/v1/{trips,contracts}/
     path("reports/", include("apps.reports.urls")),  # /api/v1/reports/<code>/
     # Future:
     # path("users/", include("apps.users.urls")),
