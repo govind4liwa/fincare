@@ -28,6 +28,9 @@ api_v1_patterns = [
         "", include("apps.platforms.urls")
     ),  # /api/v1/{platforms,earning-imports,platform-settlements}/
     path("", include("apps.bookings.urls")),  # /api/v1/{trips,contracts}/
+    path(
+        "", include("apps.tax.urls")
+    ),  # /api/v1/{tax-rate-history,vat-returns,corporate-tax-returns}/
     path("reports/", include("apps.reports.urls")),  # /api/v1/reports/<code>/
     # Future:
     # path("users/", include("apps.users.urls")),

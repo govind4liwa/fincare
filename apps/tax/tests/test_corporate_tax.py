@@ -6,7 +6,11 @@ from decimal import Decimal
 import pytest
 
 from apps.tax.models import CorporateTaxReturn, TaxReturnStatus
-from apps.tax.services.corporate_tax import compute_corporate_tax
+from apps.tax.services.corporate_tax import (
+    CorporateTaxError,
+    compute_corporate_tax,
+    file_corporate_tax_return,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -58,7 +62,20 @@ def test_filed_cannot_recompute(vat_group):
     compute_corporate_tax(ret)
     ret.status = TaxReturnStatus.FILED
     ret.save(update_fields=["status"])
-    from apps.tax.services.corporate_tax import CorporateTaxError
 
     with pytest.raises(CorporateTaxError):
         compute_corporate_tax(ret)
+
+
+def test_file_marks_filed(vat_group):
+    ret = compute_corporate_tax(_ct(vat_group.entity_a, "500000"))
+    filed = file_corporate_tax_return(ret, reference="CT-REF-1")
+    assert filed.status == TaxReturnStatus.FILED
+    assert filed.filing_reference == "CT-REF-1"
+    assert filed.filed_at is not None
+
+
+def test_cannot_file_a_draft(vat_group):
+    ret = _ct(vat_group.entity_a, "500000")
+    with pytest.raises(CorporateTaxError):
+        file_corporate_tax_return(ret)
