@@ -99,6 +99,7 @@ export const NAV: NavEntry[] = [
     children: [
       { id: "banking", label: "Bank Accounts", href: "/banking", icon: Landmark },
       { id: "reconcile", label: "Reconciliation", href: "/reconcile", icon: Scale },
+      { id: "cashbook", label: "Cashbook", href: "/cashbook", icon: Wallet },
     ],
   },
   {
