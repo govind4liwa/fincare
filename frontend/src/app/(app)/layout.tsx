@@ -12,7 +12,7 @@ import { NAV, filterNavByAccess } from "@/lib/nav-config";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, me, logout } = useAuth();
 
   // Every destination below is readable by any authenticated entity member
   // today (see apps.users.permissions.ReadAnyWriteRole — writes are
@@ -62,13 +62,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <MobileNav entries={entries} />
               <EntitySwitcher />
             </div>
-            <button
-              onClick={logout}
-              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            >
-              <LogOut className="h-4 w-4" />
-              Sign out
-            </button>
+            <div className="flex items-center gap-3">
+              {me && (
+                <span className="hidden text-sm text-muted-foreground sm:inline">
+                  {me.full_name || me.email}
+                  {me.roles.length > 0 && (
+                    <span className="ml-1.5 text-xs">
+                      ({me.is_superuser ? "superuser" : me.roles.join(", ")})
+                    </span>
+                  )}
+                </span>
+              )}
+              <button
+                onClick={logout}
+                className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </button>
+            </div>
           </header>
           <main className="flex-1 p-6">{children}</main>
         </div>
