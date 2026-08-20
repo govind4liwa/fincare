@@ -1,5 +1,6 @@
 """DRF serializers for payroll: salary components, employees, salary structure,
-the run -> payslip lifecycle, salary advances, and WPS/SIF batches."""
+the run -> payslip lifecycle, salary advances, WPS/SIF batches, and gratuity/leave
+accrual."""
 
 import logging
 
@@ -9,6 +10,8 @@ from apps.payroll.models import (
     Advance,
     Employee,
     EmployeeSalary,
+    Gratuity,
+    Leave,
     Payslip,
     PayslipLine,
     Run,
@@ -17,6 +20,8 @@ from apps.payroll.models import (
     WpsRecord,
 )
 from apps.payroll.services.engine import PayrollError
+from apps.payroll.services.gratuity import accrue_gratuity
+from apps.payroll.services.leave import accrue_leave
 from apps.payroll.services.wps import generate_wps
 
 logger = logging.getLogger(__name__)
@@ -270,4 +275,112 @@ class WpsBatchSerializer(serializers.ModelSerializer):
             logger.warning("WPS batch generation rejected: %s", exc)
             raise serializers.ValidationError(
                 {"non_field_errors": ["Could not generate the WPS batch for this run."]}
+            ) from exc
+
+
+class GratuitySerializer(serializers.ModelSerializer):
+    """Create names employee/as_of_date/provision_account/expense_account (+
+    optional basis_salary override); `accrue_gratuity` computes service years,
+    eligible days, and the amount, then books DR Expense / CR Provision.
+    Settlement is a separate action — see `GratuityViewSet.settle`."""
+
+    employee_code = serializers.CharField(source="employee.code", read_only=True)
+    employee_name = serializers.CharField(source="employee.name", read_only=True)
+    basis_salary = serializers.DecimalField(
+        max_digits=18, decimal_places=2, required=False, allow_null=True
+    )
+
+    class Meta:
+        model = Gratuity
+        fields = [
+            "id",
+            "entity",
+            "employee",
+            "employee_code",
+            "employee_name",
+            "as_of_date",
+            "service_years",
+            "basis_salary",
+            "eligible_days",
+            "amount",
+            "type",
+            "provision_account",
+            "expense_account",
+            "bank_account",
+            "journal_entry",
+            "status",
+        ]
+        read_only_fields = [
+            "entity",
+            "service_years",
+            "eligible_days",
+            "amount",
+            "type",
+            "bank_account",
+            "journal_entry",
+            "status",
+        ]
+
+    def create(self, validated_data):
+        try:
+            return accrue_gratuity(
+                validated_data["employee"],
+                as_of_date=validated_data["as_of_date"],
+                provision_account=validated_data["provision_account"],
+                expense_account=validated_data["expense_account"],
+                basis_salary=validated_data.get("basis_salary"),
+                user=self.context["request"].user,
+            )
+        except PayrollError as exc:
+            logger.warning("Gratuity accrual rejected: %s", exc)
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Could not accrue gratuity for this employee."]}
+            ) from exc
+
+
+class LeaveSerializer(serializers.ModelSerializer):
+    """Create names employee/leave_type/accrued_amount/provision_account/
+    expense_account/as_of_date (+ optional entitled_days/taken_days);
+    `accrue_leave` books DR Leave Expense / CR Leave Provision."""
+
+    employee_code = serializers.CharField(source="employee.code", read_only=True)
+    employee_name = serializers.CharField(source="employee.name", read_only=True)
+
+    class Meta:
+        model = Leave
+        fields = [
+            "id",
+            "entity",
+            "employee",
+            "employee_code",
+            "employee_name",
+            "leave_type",
+            "entitled_days",
+            "taken_days",
+            "balance_days",
+            "accrued_amount",
+            "provision_account",
+            "expense_account",
+            "journal_entry",
+            "as_of_date",
+        ]
+        read_only_fields = ["entity", "balance_days", "journal_entry"]
+
+    def create(self, validated_data):
+        try:
+            return accrue_leave(
+                validated_data["employee"],
+                leave_type=validated_data["leave_type"],
+                accrued_amount=validated_data["accrued_amount"],
+                provision_account=validated_data["provision_account"],
+                expense_account=validated_data["expense_account"],
+                as_of_date=validated_data["as_of_date"],
+                entitled_days=validated_data.get("entitled_days", 0),
+                taken_days=validated_data.get("taken_days", 0),
+                user=self.context["request"].user,
+            )
+        except PayrollError as exc:
+            logger.warning("Leave accrual rejected: %s", exc)
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Could not accrue leave salary for this employee."]}
             ) from exc
