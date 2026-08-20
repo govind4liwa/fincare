@@ -250,3 +250,69 @@ export async function payAdvance(id: string): Promise<Advance> {
   if (!res.ok) throw new Error(await detail(res, "Could not pay this advance."));
   return (await res.json()) as Advance;
 }
+
+export type WpsRecord = {
+  id: string;
+  employee: string;
+  employee_code: string;
+  employee_name: string;
+  mol_personal_no: string;
+  bank_routing_code: string;
+  iban: string;
+  pay_start_date: string;
+  pay_end_date: string;
+  working_days: string;
+  fixed_amount: string;
+  variable_amount: string;
+  leave_days: string;
+  notes: string;
+};
+
+export type WpsBatch = {
+  id: string;
+  run: string;
+  employer_eid: string;
+  employer_bank_routing: string;
+  salary_month: string;
+  total_records: number;
+  total_salary: string;
+  fixed_total: string;
+  variable_total: string;
+  sif_file_ref: string;
+  status: "generated" | "submitted";
+  generated_at: string;
+  records: WpsRecord[];
+};
+
+export async function listWpsBatches(runId?: string | null): Promise<WpsBatch[]> {
+  const params = new URLSearchParams({ limit: "100", ordering: "-generated_at" });
+  if (runId) params.set("run", runId);
+  const res = await apiFetch(`/wps-batches/?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed to load WPS batches (${res.status})`);
+  return ((await res.json()) as Paginated<WpsBatch>).results;
+}
+
+export async function generateWpsBatch(payload: {
+  run: string;
+  employer_eid: string;
+  employer_bank_routing: string;
+}): Promise<WpsBatch> {
+  const res = await apiFetch("/wps-batches/", { method: "POST", body: JSON.stringify(payload) });
+  if (!res.ok) throw new Error(await detail(res, "Could not generate this WPS batch."));
+  return (await res.json()) as WpsBatch;
+}
+
+/** Download a batch's SIF export (auth-protected) and trigger a browser save. */
+export async function downloadSifExport(batch: WpsBatch): Promise<void> {
+  const res = await apiFetch(`/wps-batches/${batch.id}/export/`);
+  if (!res.ok) throw new Error(await detail(res, "Could not export this SIF file."));
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = batch.sif_file_ref || `SIF_${batch.employer_eid}_${batch.salary_month}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

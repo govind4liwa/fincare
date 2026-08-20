@@ -1,12 +1,14 @@
 """Payroll API: salary components, employees + salary structure, the
-run -> payslip lifecycle (build -> post accrual -> pay), and salary advances.
+run -> payslip lifecycle (build -> post accrual -> pay), salary advances,
+and WPS/SIF batch generation + export.
 
-WPS/SIF export and gratuity/leave are separate follow-up slices.
+Gratuity/leave is a separate follow-up slice.
 """
 
 import logging
 
 from django.db.models import Q
+from django.http import HttpResponse
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -15,7 +17,15 @@ from rest_framework.response import Response
 
 from apps.accounts.views import EntityScopedMasterViewSet, scope_to_entities
 from apps.banking.models import BankAccount
-from apps.payroll.models import Advance, Employee, EmployeeSalary, Payslip, Run, SalaryComponent
+from apps.payroll.models import (
+    Advance,
+    Employee,
+    EmployeeSalary,
+    Payslip,
+    Run,
+    SalaryComponent,
+    WpsBatch,
+)
 from apps.payroll.serializers import (
     AdvanceSerializer,
     EmployeeSalarySerializer,
@@ -23,10 +33,12 @@ from apps.payroll.serializers import (
     PayslipSerializer,
     RunSerializer,
     SalaryComponentSerializer,
+    WpsBatchSerializer,
 )
 from apps.payroll.services.advance import pay_advance
 from apps.payroll.services.engine import PayrollError
 from apps.payroll.services.run import build_run, pay_run, post_run
+from apps.payroll.services.wps import export_sif
 from apps.tenants.views import accessible_entity_ids
 from apps.users.permissions import ReadAnyWriteRole
 
@@ -160,6 +172,41 @@ class AdvanceViewSet(EntityScopedMasterViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(self.get_serializer(advance).data)
+
+
+class WpsBatchViewSet(viewsets.ModelViewSet):
+    """A draft names run/employer_eid/employer_bank_routing; `generate_wps`
+    derives one record per WPS-paid employee from that run's payslips."""
+
+    serializer_class = WpsBatchSerializer
+    permission_classes = [IsAuthenticated, ReadAnyWriteRole]
+    required_roles = ROLES
+    http_method_names = ["get", "post", "head", "options"]
+    filterset_fields = ["run", "status"]
+    ordering_fields = ["generated_at"]
+    ordering = ["-generated_at"]
+
+    def get_queryset(self):
+        return scope_to_entities(
+            WpsBatch.objects.select_related("run").prefetch_related("records__employee"),
+            self.request.user,
+            "run__entity_id",
+        )
+
+    @action(detail=True, methods=["get"], url_path="export")
+    def export_action(self, request, pk=None):
+        batch = self.get_object()
+        try:
+            content = export_sif(batch)
+        except PayrollError:
+            logger.exception("SIF export failed for WPS batch %s", batch.pk)
+            return Response(
+                {"detail": "Could not export — the batch totals do not reconcile."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        response = HttpResponse(content, content_type="text/csv")
+        response["Content-Disposition"] = f'attachment; filename="{batch.sif_file_ref}"'
+        return response
 
 
 class PayslipViewSet(viewsets.ReadOnlyModelViewSet):

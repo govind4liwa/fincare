@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 
 import pytest
 
-from apps.payroll.models import Advance, ComponentType, Run, RunStatus, SalaryComponent
+from apps.payroll.models import Advance, ComponentType, Run, RunStatus, SalaryComponent, WpsBatch
 from apps.payroll.tests.conftest import STAFF_ADVANCES
 from apps.tenants.models import UserEntityMembership
 
@@ -215,6 +215,68 @@ def test_advance_cannot_be_paid_twice(entity, employee, acct, bank_enbd):
     assert first.status_code == 200, first.content
     second = client.post(f"/api/v1/payroll-advances/{advance_id}/pay/")
     assert second.status_code == 400
+
+
+def test_generate_and_export_wps_batch(entity, employee, bank_enbd):
+    client = _client(entity, "accountant")
+    run = Run.objects.create(entity=entity, salary_month="2026-06", run_date=date(2026, 6, 30))
+    client.post(f"/api/v1/payroll-runs/{run.id}/build/")
+    client.post(f"/api/v1/payroll-runs/{run.id}/post/")
+
+    res = client.post(
+        "/api/v1/wps-batches/",
+        {
+            "run": str(run.id),
+            "employer_eid": "EST-123",
+            "employer_bank_routing": "CBUAEAD",
+        },
+        format="json",
+    )
+    assert res.status_code == 201, res.content
+    batch_id = res.data["id"]
+    assert res.data["total_records"] == 1
+    assert res.data["fixed_total"] == "3000.00"
+    assert res.data["variable_total"] == "1000.00"
+    assert res.data["total_salary"] == "4000.00"
+    assert len(res.data["records"]) == 1
+    assert res.data["records"][0]["employee_code"] == "E001"
+
+    export = client.get(f"/api/v1/wps-batches/{batch_id}/export/")
+    assert export.status_code == 200, export.content
+    content = export.content.decode()
+    assert content.startswith("SCR,")
+    assert content.count("\nEDR,") == 1
+    assert export["Content-Disposition"].startswith("attachment;")
+
+
+def test_export_rejects_unreconciled_batch(entity, employee):
+    client = _client(entity, "accountant")
+    run = Run.objects.create(entity=entity, salary_month="2026-06", run_date=date(2026, 6, 30))
+    client.post(f"/api/v1/payroll-runs/{run.id}/build/")
+    client.post(f"/api/v1/payroll-runs/{run.id}/post/")
+    res = client.post(
+        "/api/v1/wps-batches/",
+        {"run": str(run.id), "employer_eid": "EST-123", "employer_bank_routing": "CBUAEAD"},
+        format="json",
+    )
+    batch_id = res.data["id"]
+    batch = WpsBatch.objects.get(id=batch_id)
+    batch.total_salary = Decimal("9999.00")
+    batch.save(update_fields=["total_salary"])
+
+    export = client.get(f"/api/v1/wps-batches/{batch_id}/export/")
+    assert export.status_code == 400
+
+
+def test_wps_batch_write_requires_role(entity, employee):
+    client = _client(entity, role=None)
+    run = Run.objects.create(entity=entity, salary_month="2026-06", run_date=date(2026, 6, 30))
+    res = client.post(
+        "/api/v1/wps-batches/",
+        {"run": str(run.id), "employer_eid": "EST-123", "employer_bank_routing": "CBUAEAD"},
+        format="json",
+    )
+    assert res.status_code == 403
 
 
 def test_advance_write_requires_role(entity, employee, acct):

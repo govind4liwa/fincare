@@ -9,6 +9,7 @@ from apps.payroll.views import (
     PayslipViewSet,
     RunViewSet,
     SalaryComponentViewSet,
+    WpsBatchViewSet,
 )
 
 router = DefaultRouter()
@@ -18,5 +19,6 @@ router.register("employee-salaries", EmployeeSalaryViewSet, basename="employee-s
 router.register("payroll-runs", RunViewSet, basename="payroll-run")
 router.register("payslips", PayslipViewSet, basename="payslip")
 router.register("payroll-advances", AdvanceViewSet, basename="payroll-advance")
+router.register("wps-batches", WpsBatchViewSet, basename="wps-batch")
 
 urlpatterns = router.urls
