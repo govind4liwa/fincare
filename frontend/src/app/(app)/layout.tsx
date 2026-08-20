@@ -34,6 +34,7 @@ import {
   Users,
   Wallet,
   FileSpreadsheet,
+  Umbrella,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { EntityProvider } from "@/lib/entity-context";
@@ -68,6 +69,7 @@ const NAV = [
   { href: "/payroll-advances", label: "Salary Advances", icon: PiggyBank },
   { href: "/payroll-runs", label: "Payroll Runs", icon: Banknote },
   { href: "/wps-batches", label: "WPS / SIF Export", icon: FileSpreadsheet },
+  { href: "/gratuity-leave", label: "Gratuity & Leave", icon: Umbrella },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

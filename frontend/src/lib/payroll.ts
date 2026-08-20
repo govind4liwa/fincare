@@ -316,3 +316,98 @@ export async function downloadSifExport(batch: WpsBatch): Promise<void> {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+export type Gratuity = {
+  id: string;
+  entity: string;
+  employee: string;
+  employee_code: string;
+  employee_name: string;
+  as_of_date: string;
+  service_years: string;
+  basis_salary: string;
+  eligible_days: string;
+  amount: string;
+  type: "accrual" | "settlement";
+  provision_account: string;
+  expense_account: string;
+  bank_account: string | null;
+  journal_entry: string | null;
+  status: "draft" | "posted" | "settled";
+};
+
+export async function listGratuities(employeeId?: string | null): Promise<Gratuity[]> {
+  const params = new URLSearchParams({ limit: "200", ordering: "-as_of_date" });
+  if (employeeId) params.set("employee", employeeId);
+  const res = await apiFetch(`/gratuities/?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed to load gratuity records (${res.status})`);
+  return ((await res.json()) as Paginated<Gratuity>).results;
+}
+
+export async function accrueGratuity(payload: {
+  employee: string;
+  as_of_date: string;
+  provision_account: string;
+  expense_account: string;
+  basis_salary?: string;
+}): Promise<Gratuity> {
+  const res = await apiFetch("/gratuities/", { method: "POST", body: JSON.stringify(payload) });
+  if (!res.ok) throw new Error(await detail(res, "Could not accrue gratuity for this employee."));
+  return (await res.json()) as Gratuity;
+}
+
+export async function settleGratuity(payload: {
+  employee: string;
+  as_of_date: string;
+  amount: string;
+  provision_account: string;
+  expense_account: string;
+  bank_account: string;
+}): Promise<Gratuity> {
+  const res = await apiFetch("/gratuities/settle/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not settle gratuity for this employee."));
+  return (await res.json()) as Gratuity;
+}
+
+export type Leave = {
+  id: string;
+  entity: string;
+  employee: string;
+  employee_code: string;
+  employee_name: string;
+  leave_type: "annual" | "sick" | "unpaid";
+  entitled_days: string;
+  taken_days: string;
+  balance_days: string;
+  accrued_amount: string;
+  provision_account: string | null;
+  expense_account: string | null;
+  journal_entry: string | null;
+  as_of_date: string;
+};
+
+export async function listLeaves(employeeId?: string | null): Promise<Leave[]> {
+  const params = new URLSearchParams({ limit: "200", ordering: "-as_of_date" });
+  if (employeeId) params.set("employee", employeeId);
+  const res = await apiFetch(`/leaves/?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed to load leave records (${res.status})`);
+  return ((await res.json()) as Paginated<Leave>).results;
+}
+
+export async function accrueLeave(payload: {
+  employee: string;
+  leave_type: string;
+  accrued_amount: string;
+  provision_account: string;
+  expense_account: string;
+  as_of_date: string;
+  entitled_days?: string;
+  taken_days?: string;
+}): Promise<Leave> {
+  const res = await apiFetch("/leaves/", { method: "POST", body: JSON.stringify(payload) });
+  if (!res.ok) throw new Error(await detail(res, "Could not accrue leave salary for this employee."));
+  return (await res.json()) as Leave;
+}

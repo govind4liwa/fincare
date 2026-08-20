@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 import pytest
 
 from apps.payroll.models import Advance, ComponentType, Run, RunStatus, SalaryComponent, WpsBatch
-from apps.payroll.tests.conftest import STAFF_ADVANCES
+from apps.payroll.tests.conftest import GRATUITY_EXPENSE, GRATUITY_PROVISION, STAFF_ADVANCES
 from apps.tenants.models import UserEntityMembership
 
 pytestmark = pytest.mark.django_db
@@ -274,6 +274,129 @@ def test_wps_batch_write_requires_role(entity, employee):
     res = client.post(
         "/api/v1/wps-batches/",
         {"run": str(run.id), "employer_eid": "EST-123", "employer_bank_routing": "CBUAEAD"},
+        format="json",
+    )
+    assert res.status_code == 403
+
+
+def test_accrue_and_settle_gratuity(entity, employee, acct, bank_enbd):
+    client = _client(entity, "accountant")
+    res = client.post(
+        "/api/v1/gratuities/",
+        {
+            "employee": str(employee.id),
+            "as_of_date": "2026-06-30",
+            "provision_account": str(acct(GRATUITY_PROVISION).id),
+            "expense_account": str(acct(GRATUITY_EXPENSE).id),
+        },
+        format="json",
+    )
+    assert res.status_code == 201, res.content
+    assert res.data["type"] == "accrual"
+    assert res.data["status"] == "posted"
+    assert res.data["service_years"] == "4.0000"
+    assert res.data["amount"] == "8400.00"
+    assert res.data["journal_entry"] is not None
+
+    res = client.post(
+        "/api/v1/gratuities/settle/",
+        {
+            "employee": str(employee.id),
+            "as_of_date": "2026-06-30",
+            "amount": "8400.00",
+            "provision_account": str(acct(GRATUITY_PROVISION).id),
+            "expense_account": str(acct(GRATUITY_EXPENSE).id),
+            "bank_account": str(bank_enbd.id),
+        },
+        format="json",
+    )
+    assert res.status_code == 201, res.content
+    assert res.data["type"] == "settlement"
+    assert res.data["status"] == "settled"
+    assert res.data["amount"] == "8400.00"
+
+
+def test_gratuity_settle_requires_fields(entity, employee, acct):
+    client = _client(entity, "accountant")
+    res = client.post(
+        "/api/v1/gratuities/settle/",
+        {
+            "employee": str(employee.id),
+            "as_of_date": "2026-06-30",
+            "amount": "8400.00",
+            "provision_account": str(acct(GRATUITY_PROVISION).id),
+            "expense_account": str(acct(GRATUITY_EXPENSE).id),
+        },
+        format="json",
+    )
+    assert res.status_code == 400
+
+
+def test_gratuity_write_requires_role(entity, employee, acct):
+    client = _client(entity, role=None)
+    res = client.post(
+        "/api/v1/gratuities/",
+        {
+            "employee": str(employee.id),
+            "as_of_date": "2026-06-30",
+            "provision_account": str(acct(GRATUITY_PROVISION).id),
+            "expense_account": str(acct(GRATUITY_EXPENSE).id),
+        },
+        format="json",
+    )
+    assert res.status_code == 403
+
+
+def test_accrue_leave(entity, employee, acct):
+    client = _client(entity, "accountant")
+    res = client.post(
+        "/api/v1/leaves/",
+        {
+            "employee": str(employee.id),
+            "leave_type": "annual",
+            "accrued_amount": "500.00",
+            "provision_account": str(acct(GRATUITY_PROVISION).id),
+            "expense_account": str(acct(GRATUITY_EXPENSE).id),
+            "as_of_date": "2026-06-30",
+            "entitled_days": "30",
+            "taken_days": "5",
+        },
+        format="json",
+    )
+    assert res.status_code == 201, res.content
+    assert res.data["balance_days"] == "25.00"
+    assert res.data["journal_entry"] is not None
+
+
+def test_leave_accrual_rejects_zero_amount(entity, employee, acct):
+    client = _client(entity, "accountant")
+    res = client.post(
+        "/api/v1/leaves/",
+        {
+            "employee": str(employee.id),
+            "leave_type": "annual",
+            "accrued_amount": "0.00",
+            "provision_account": str(acct(GRATUITY_PROVISION).id),
+            "expense_account": str(acct(GRATUITY_EXPENSE).id),
+            "as_of_date": "2026-06-30",
+        },
+        format="json",
+    )
+    assert res.status_code == 400
+
+
+def test_leave_write_requires_role(entity, employee, acct):
+    client = _client(entity, role=None)
+    res = client.post(
+        "/api/v1/leaves/",
+        {
+            "employee": str(employee.id),
+            "leave_type": "annual",
+            "accrued_amount": "500.00",
+            "provision_account": str(acct(GRATUITY_PROVISION).id),
+            "expense_account": str(acct(GRATUITY_EXPENSE).id),
+            "as_of_date": "2026-06-30",
+        },
         format="json",
     )
     assert res.status_code == 403
