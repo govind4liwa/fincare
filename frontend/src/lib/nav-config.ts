@@ -13,6 +13,7 @@ import {
   FileText,
   HandCoins,
   HandHeart,
+  History,
   IdCard,
   Landmark,
   LayoutDashboard,
@@ -153,6 +154,7 @@ export const NAV: NavEntry[] = [
         href: "/corporate-tax-returns",
         icon: Calculator,
       },
+      { id: "audit-log", label: "Audit Trail", href: "/audit-log", icon: History },
     ],
   },
   {
