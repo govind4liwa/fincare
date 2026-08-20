@@ -6,6 +6,8 @@ from apps.payroll.views import (
     AdvanceViewSet,
     EmployeeSalaryViewSet,
     EmployeeViewSet,
+    GratuityViewSet,
+    LeaveViewSet,
     PayslipViewSet,
     RunViewSet,
     SalaryComponentViewSet,
@@ -20,5 +22,7 @@ router.register("payroll-runs", RunViewSet, basename="payroll-run")
 router.register("payslips", PayslipViewSet, basename="payslip")
 router.register("payroll-advances", AdvanceViewSet, basename="payroll-advance")
 router.register("wps-batches", WpsBatchViewSet, basename="wps-batch")
+router.register("gratuities", GratuityViewSet, basename="gratuity")
+router.register("leaves", LeaveViewSet, basename="leave")
 
 urlpatterns = router.urls

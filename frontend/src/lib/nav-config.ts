@@ -28,6 +28,7 @@ import {
   Smartphone,
   TrendingDown,
   Truck,
+  Umbrella,
   Users,
   Wallet,
 } from "lucide-react";
@@ -164,6 +165,7 @@ export const NAV: NavEntry[] = [
       { id: "payroll-advances", label: "Salary Advances", href: "/payroll-advances", icon: PiggyBank },
       { id: "payroll-runs", label: "Payroll Runs", href: "/payroll-runs", icon: Banknote },
       { id: "wps-batches", label: "WPS / SIF Export", href: "/wps-batches", icon: FileSpreadsheet },
+      { id: "gratuity-leave", label: "Gratuity & Leave", href: "/gratuity-leave", icon: Umbrella },
     ],
   },
   { kind: "link", id: "reports", label: "Reports", href: "/reports", icon: BarChart3 },

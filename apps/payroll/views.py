@@ -1,26 +1,28 @@
 """Payroll API: salary components, employees + salary structure, the
 run -> payslip lifecycle (build -> post accrual -> pay), salary advances,
-and WPS/SIF batch generation + export.
-
-Gratuity/leave is a separate follow-up slice.
+WPS/SIF batch generation + export, and gratuity/leave accrual.
 """
 
 import logging
 
 from django.db.models import Q
 from django.http import HttpResponse
+from django.utils.dateparse import parse_date
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.accounts.models import Account
 from apps.accounts.views import EntityScopedMasterViewSet, scope_to_entities
 from apps.banking.models import BankAccount
 from apps.payroll.models import (
     Advance,
     Employee,
     EmployeeSalary,
+    Gratuity,
+    Leave,
     Payslip,
     Run,
     SalaryComponent,
@@ -30,6 +32,8 @@ from apps.payroll.serializers import (
     AdvanceSerializer,
     EmployeeSalarySerializer,
     EmployeeSerializer,
+    GratuitySerializer,
+    LeaveSerializer,
     PayslipSerializer,
     RunSerializer,
     SalaryComponentSerializer,
@@ -37,6 +41,7 @@ from apps.payroll.serializers import (
 )
 from apps.payroll.services.advance import pay_advance
 from apps.payroll.services.engine import PayrollError
+from apps.payroll.services.gratuity import settle_gratuity
 from apps.payroll.services.run import build_run, pay_run, post_run
 from apps.payroll.services.wps import export_sif
 from apps.tenants.views import accessible_entity_ids
@@ -207,6 +212,83 @@ class WpsBatchViewSet(viewsets.ModelViewSet):
         response = HttpResponse(content, content_type="text/csv")
         response["Content-Disposition"] = f'attachment; filename="{batch.sif_file_ref}"'
         return response
+
+
+class GratuityViewSet(viewsets.ModelViewSet):
+    """Create books an accrual (DR Gratuity Expense / CR Gratuity Provision).
+    Final settlement is a separate `settle` action — it aggregates all posted
+    accrual rows for the employee rather than transitioning a single row."""
+
+    queryset = Gratuity.objects.select_related(
+        "employee", "provision_account", "expense_account", "bank_account"
+    )
+    serializer_class = GratuitySerializer
+    permission_classes = [IsAuthenticated, ReadAnyWriteRole]
+    required_roles = ROLES
+    http_method_names = ["get", "post", "head", "options"]
+    filterset_fields = ["entity", "employee", "type", "status"]
+    ordering_fields = ["as_of_date"]
+    ordering = ["-as_of_date"]
+
+    def get_queryset(self):
+        return scope_to_entities(self.queryset, self.request.user)
+
+    @action(detail=False, methods=["post"], url_path="settle")
+    def settle_action(self, request):
+        employee = scope_to_entities(
+            Employee.objects.filter(id=request.data.get("employee")), request.user
+        ).first()
+        provision_account = scope_to_entities(
+            Account.objects.filter(id=request.data.get("provision_account")), request.user
+        ).first()
+        expense_account = scope_to_entities(
+            Account.objects.filter(id=request.data.get("expense_account")), request.user
+        ).first()
+        bank_account = scope_to_entities(
+            BankAccount.objects.filter(id=request.data.get("bank_account")), request.user
+        ).first()
+        as_of_date = parse_date(request.data.get("as_of_date") or "")
+        if not (employee and provision_account and expense_account and bank_account and as_of_date):
+            return Response(
+                {
+                    "detail": "employee, as_of_date, provision_account, expense_account, and "
+                    "bank_account are required."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            gratuity = settle_gratuity(
+                employee,
+                as_of_date=as_of_date,
+                amount=request.data.get("amount"),
+                provision_account=provision_account,
+                expense_account=expense_account,
+                bank_account=bank_account,
+                user=request.user,
+            )
+        except (PayrollError, TypeError, ArithmeticError):
+            logger.exception("Gratuity settlement failed for employee %s", employee.pk)
+            return Response(
+                {"detail": "Could not settle — check the amount and that the accounts are valid."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self.get_serializer(gratuity).data, status=status.HTTP_201_CREATED)
+
+
+class LeaveViewSet(viewsets.ModelViewSet):
+    """Create books a leave-salary accrual (DR Leave Expense / CR Leave Provision)."""
+
+    queryset = Leave.objects.select_related("employee", "provision_account", "expense_account")
+    serializer_class = LeaveSerializer
+    permission_classes = [IsAuthenticated, ReadAnyWriteRole]
+    required_roles = ROLES
+    http_method_names = ["get", "post", "head", "options"]
+    filterset_fields = ["entity", "employee", "leave_type"]
+    ordering_fields = ["as_of_date"]
+    ordering = ["-as_of_date"]
+
+    def get_queryset(self):
+        return scope_to_entities(self.queryset, self.request.user)
 
 
 class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
