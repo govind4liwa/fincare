@@ -40,10 +40,10 @@ describe("findActiveGroupId", () => {
   });
 });
 
-describe("NAV structure — retains every destination (29 at the time this reorg branched, plus Gratuity & Leave and Cashbook merged in afterward)", () => {
-  it("has exactly 31 leaf destinations across direct links and group children", () => {
+describe("NAV structure — retains every destination (29 at the time this reorg branched, plus Gratuity & Leave, Cashbook, and Audit Trail merged in afterward)", () => {
+  it("has exactly 32 leaf destinations across direct links and group children", () => {
     const count = NAV.reduce((total, entry) => total + (isGroup(entry) ? entry.children.length : 1), 0);
-    expect(count).toBe(31);
+    expect(count).toBe(32);
   });
 
   it("has no duplicate hrefs", () => {
