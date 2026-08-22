@@ -6,6 +6,7 @@ import { listAccounts, type Account } from "@/lib/accounts";
 import {
   createSalaryComponent,
   listSalaryComponents,
+  updateSalaryComponent,
   type SalaryComponent,
 } from "@/lib/payroll";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,15 @@ import { Card, CardContent } from "@/components/ui/card";
 
 const fieldClass =
   "h-9 rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40";
+
+type EditValues = {
+  code: string;
+  name: string;
+  component_type: string;
+  is_gratuity_base: boolean;
+  is_wps_fixed: boolean;
+  account: string;
+};
 
 export default function SalaryComponentsPage() {
   const { selectedId, selectedEntity } = useEntity();
@@ -32,6 +42,10 @@ export default function SalaryComponentsPage() {
     is_wps_fixed: true,
     account: "",
   });
+
+  const [editingId, setEditingId] = useState("");
+  const [editForm, setEditForm] = useState<EditValues | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -64,6 +78,42 @@ export default function SalaryComponentsPage() {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function startEdit(c: SalaryComponent) {
+    setError("");
+    setEditingId(c.id);
+    setEditForm({
+      code: c.code,
+      name: c.name,
+      component_type: c.component_type,
+      is_gratuity_base: c.is_gratuity_base,
+      is_wps_fixed: c.is_wps_fixed,
+      account: c.account ?? "",
+    });
+  }
+
+  function cancelEdit() {
+    setEditingId("");
+    setEditForm(null);
+  }
+
+  async function saveEdit(id: string) {
+    if (!editForm) return;
+    if (!editForm.code || !editForm.name || !editForm.account) {
+      return setError("Code, name, and account are required.");
+    }
+    setSavingEdit(true);
+    setError("");
+    try {
+      const updated = await updateSalaryComponent(id, editForm);
+      setComponents((prev) => prev.map((c) => (c.id === id ? updated : c)));
+      cancelEdit();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -168,35 +218,126 @@ export default function SalaryComponentsPage() {
                 <th className="px-4 py-2 font-medium">Account</th>
                 <th className="px-4 py-2 text-center font-medium">Gratuity base</th>
                 <th className="px-4 py-2 text-center font-medium">WPS fixed</th>
+                <th className="px-4 py-2 text-right font-medium" />
               </tr>
             </thead>
             <tbody>
               {components.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     No salary components yet.
                   </td>
                 </tr>
               ) : (
-                components.map((c) => (
-                  <tr key={c.id} className="border-b border-border/60 last:border-0">
-                    <td className="px-4 py-2 font-mono text-xs">{c.code}</td>
-                    <td className="px-4 py-2">
-                      {c.name}
-                      {c.entity === null && (
-                        <span className="ml-1 text-xs text-muted-foreground">(group-wide)</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 capitalize text-muted-foreground">
-                      {c.component_type}
-                    </td>
-                    <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
-                      {c.account_code || "—"}
-                    </td>
-                    <td className="px-4 py-2 text-center">{c.is_gratuity_base ? "✓" : "—"}</td>
-                    <td className="px-4 py-2 text-center">{c.is_wps_fixed ? "✓" : "—"}</td>
-                  </tr>
-                ))
+                components.map((c) => {
+                  if (editingId === c.id && editForm) {
+                    return (
+                      <tr key={c.id} className="border-b border-border/60 bg-accent/20 last:border-0">
+                        <td className="px-4 py-2">
+                          <Input
+                            value={editForm.code}
+                            onChange={(e) =>
+                              setEditForm((p) => p && { ...p, code: e.target.value.toUpperCase() })
+                            }
+                            className="w-24"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <Input
+                            value={editForm.name}
+                            onChange={(e) => setEditForm((p) => p && { ...p, name: e.target.value })}
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <select
+                            value={editForm.component_type}
+                            onChange={(e) =>
+                              setEditForm((p) => p && { ...p, component_type: e.target.value })
+                            }
+                            className={fieldClass}
+                          >
+                            <option value="earning">Earning</option>
+                            <option value="deduction">Deduction</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-2">
+                          <select
+                            value={editForm.account}
+                            onChange={(e) =>
+                              setEditForm((p) => p && { ...p, account: e.target.value })
+                            }
+                            className={fieldClass}
+                          >
+                            <option value="">Select…</option>
+                            {accounts.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.code} · {a.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={editForm.is_gratuity_base}
+                            onChange={(e) =>
+                              setEditForm((p) => p && { ...p, is_gratuity_base: e.target.checked })
+                            }
+                            className="h-4 w-4 rounded border-border"
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={editForm.is_wps_fixed}
+                            onChange={(e) =>
+                              setEditForm((p) => p && { ...p, is_wps_fixed: e.target.checked })
+                            }
+                            className="h-4 w-4 rounded border-border"
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                          <Button size="sm" disabled={savingEdit} onClick={() => saveEdit(c.id)}>
+                            {savingEdit ? "Saving…" : "Save"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="ml-2"
+                            disabled={savingEdit}
+                            onClick={cancelEdit}
+                          >
+                            Cancel
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return (
+                    <tr key={c.id} className="border-b border-border/60 last:border-0">
+                      <td className="px-4 py-2 font-mono text-xs">{c.code}</td>
+                      <td className="px-4 py-2">
+                        {c.name}
+                        {c.entity === null && (
+                          <span className="ml-1 text-xs text-muted-foreground">(group-wide)</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 capitalize text-muted-foreground">
+                        {c.component_type}
+                      </td>
+                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
+                        {c.account_code || "—"}
+                      </td>
+                      <td className="px-4 py-2 text-center">{c.is_gratuity_base ? "✓" : "—"}</td>
+                      <td className="px-4 py-2 text-center">{c.is_wps_fixed ? "✓" : "—"}</td>
+                      <td className="px-4 py-2 text-right">
+                        <Button size="sm" variant="outline" onClick={() => startEdit(c)}>
+                          Edit
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
