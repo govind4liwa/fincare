@@ -45,6 +45,26 @@ export async function createSalaryComponent(payload: {
   return (await res.json()) as SalaryComponent;
 }
 
+export async function updateSalaryComponent(
+  id: string,
+  payload: Partial<{
+    code: string;
+    name: string;
+    component_type: string;
+    is_gratuity_base: boolean;
+    is_wps_fixed: boolean;
+    account: string;
+    is_active: boolean;
+  }>,
+): Promise<SalaryComponent> {
+  const res = await apiFetch(`/salary-components/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await detail(res, "Could not save this component."));
+  return (await res.json()) as SalaryComponent;
+}
+
 export type EmployeeSalary = {
   id: string;
   employee: string;
