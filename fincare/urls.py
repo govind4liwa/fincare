@@ -37,10 +37,10 @@ api_v1_patterns = [
     path(
         "", include("apps.cashbook.urls")
     ),  # /api/v1/{cash-accounts,petty-cash-floats,replenishments,cash-counts}/
+    path("", include("apps.users.urls")),  # /api/v1/users/me/
     path("", include("apps.audit.urls")),  # /api/v1/audit-logs/
     path("reports/", include("apps.reports.urls")),  # /api/v1/reports/<code>/
     # Future:
-    # path("users/", include("apps.users.urls")),
     # path("accounts/", include("apps.accounts.urls")),
     # path("ledger/", include("apps.ledger.urls")),
     # ...
