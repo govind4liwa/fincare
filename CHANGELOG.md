@@ -7,6 +7,125 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-19
+
+**Every app is now operable from the browser.** v0.4.0 shipped a backend whose
+accounting engine was complete but largely unreachable: nine apps had fully
+built, unit-tested service layers and *no API at all* — no serializer, no
+ViewSet, no route, no screen. This release closes that gap end to end. Platform
+settlements, trip revenue, VAT 201 and Corporate Tax filing, payroll and WPS,
+the cashbook, the audit trail, and file imports all became things an operator
+can actually do, rather than capabilities that only existed in tests.
+
+Almost nothing here changes how the books work — the posting rules, the ledger
+engine and the service layer are the ones v0.4.0 already shipped and tested.
+What changed is reach.
+
+### Added
+
+- **Platforms** — platform masters, staged earning rows, and the settlement
+  workflow: create a draft, `reconcile` to aggregate staged imports into
+  gross/commission/variance, then `post` to book DR Bank / CR Platform Clearing
+  with the adjustment either way. Screens for the master list and the
+  settlement workflow.
+- **Bookings** — the trip register and corporate contracts. Trips can be
+  multi-selected and posted as one balanced aggregate revenue entry grouped by
+  vehicle and driver; a contract generates its cycle's sales invoice.
+- **UAE tax filing** — VAT 201 returns and Corporate Tax returns, each with
+  `compute` and `file` actions and an expandable box-by-box breakdown.
+  Corporate Tax gained a `file_corporate_tax_return` service so it has the same
+  compute → file lifecycle as VAT rather than stopping at "computed". VAT
+  return scoping is polymorphic: a return belongs either to a VAT group's
+  member entities or to one standalone entity, and access is checked against
+  the caller's accessible entities directly.
+- **Payroll** (shipped as four reviewable slices) — employees and their
+  effective-dated salary structures; the run lifecycle (`build` derives
+  payslips from the current structure and recovers open advances, `post` books
+  the accrual, `pay` books the payment separately); salary advances with
+  recovery; WPS batch generation with a reconciled SIF file download; and
+  gratuity and leave accrual with gratuity settlement.
+- **Cashbook** — cash accounts and petty-cash floats, replenishments
+  (DR Petty Cash / CR Bank), and physical cash counts with an editable
+  denomination tally whose variance posts to a short/over account.
+- **File imports** — import profiles describing a source's column layout (a
+  profile with no entity is group-wide), plus multipart upload endpoints for
+  bank statements (→ statement lines for reconciliation) and platform earnings
+  (→ staged rows for settlement). Re-importing a file is idempotent. A failed
+  run is recorded as an `ERROR` batch carrying the reason, so bad files are
+  reported rather than silently dropped, while the HTTP response stays generic.
+  Uploads are bounded by extension and by `INTEGRATIONS_MAX_UPLOAD_MB`.
+- **Audit trail** — a read-only view of the existing append-only log, filterable
+  by action and expandable to a field-level before/after diff. Unlike the other
+  endpoints added here, reads are role-gated too: the trail covers other users'
+  actions across the entity, not just the caller's own.
+- **Accounting periods** — the full lifecycle. Periods can be created (rejecting
+  overlapping date ranges, since posting resolves an entry's period from its
+  date alone), closed, reopened, and locked. Closing is routine and reversible;
+  locking is one-way, applying to the period the same immutability the system
+  applies to posted entries.
+- **Driver receivables can now be cleared** — a `DriverClearing` document with
+  two kinds that differ only in what they debit: a receipt (DR Bank) or a
+  write-off (DR Bad Debts). Both always credit the entity's *configured*
+  receivable account — the same account the negative-net settlement debited —
+  and both accounts are resolved at posting time and persisted, so a later
+  configuration change cannot rewrite posted history.
+- **Multi-invoice allocation** — apply one receipt, payment, credit note or
+  debit note across several open documents in a single atomic action, and undo
+  a previous allocation. Reversals are recorded (`reversed_at`/`reversed_by`),
+  never deleted, so the subledger history stays auditable.
+- **Chart of Accounts groups** — new Main and Sub groups can be created, with a
+  Sub group inheriting its parent's nature so a branch stays one nature end to
+  end. Codes remain immutable once created, as with accounts.
+- **Fleet** — vehicle documents with expiry ageing (each renewal is a new row,
+  so expired documents remain as renewal history) and depreciation runs that
+  post one line per configured active vehicle.
+- **Entity settings** — typed override cards for the gratuity rule and SIF
+  layout, showing the merged effective value over the documented UAE defaults,
+  with a reset back to default.
+- **PDF report export** — the existing WeasyPrint renderer is now wired to the
+  report endpoint alongside Excel.
+- **Self-profile endpoint** (`/users/me/`) — identity, roles and accessible
+  entities; the app header now shows who is signed in and with what roles.
+
+### Changed
+
+- **The sidebar was reorganised** into eight collapsible categories plus
+  Dashboard, Reports and Settings as direct links — no route was added, removed
+  or renamed in that change. The desktop accordion auto-expands to the active
+  route on every navigation, and mobile drills into one category at a time.
+  Both are keyboard-operable and respect `prefers-reduced-motion`.
+- Salary components can be edited inline, not just created — the backend had
+  always accepted `PATCH`, but the screen never offered it.
+- `apiFetch` no longer forces `application/json` when the request body is
+  `FormData`, so the browser can set its own multipart boundary.
+
+### Fixed
+
+- **Authenticated page reloads bounced to the login screen.** The app layout's
+  auth guard redirected off the transient `false` that `useSyncExternalStore`
+  reports on the first hydration render, so every refresh logged you out
+  despite valid tokens. The redirect is now deferred a tick and cancelled if
+  the value resolves true first.
+- Trip revenue posting crashed on a date string from the request body, which
+  needed parsing to a `date` before reaching the service.
+- A non-UTF-8 CSV, an unopenable workbook, or a missing worksheet now surface
+  as a clean import error instead of an unhandled decoder or openpyxl
+  exception.
+
+### Documentation
+
+- Design 08 (vehicle financing) was reviewed against the shipped code and
+  twelve issues folded in, four substantive — including a raise-dues path that
+  would have silently driven a non-control account negative, and a customer
+  statement that double-counted every migrated opening balance. A review log
+  was added so the resolved decisions are not relitigated.
+
+### Internal
+
+- **The frontend has test tooling** for the first time: Vitest and Testing
+  Library, with 28 tests covering the new navigation's expand/collapse,
+  active-route behaviour, keyboard operation and mobile drill-down.
+
 ## [0.4.0] - 2026-07-25
 
 **Vehicle finance schedules and driver settlements.**
