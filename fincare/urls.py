@@ -39,6 +39,7 @@ api_v1_patterns = [
     ),  # /api/v1/{cash-accounts,petty-cash-floats,replenishments,cash-counts}/
     path("", include("apps.users.urls")),  # /api/v1/users/me/
     path("", include("apps.audit.urls")),  # /api/v1/audit-logs/
+    path("", include("apps.integrations.urls")),  # /api/v1/{import-profiles,import-batches}/
     path("reports/", include("apps.reports.urls")),  # /api/v1/reports/<code>/
     # Future:
     # path("accounts/", include("apps.accounts.urls")),

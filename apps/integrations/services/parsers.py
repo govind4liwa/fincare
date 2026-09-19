@@ -63,7 +63,10 @@ def to_date(value, fmt=""):
 
 
 def _rows_from_csv(content, skip_rows):
-    text = content.decode("utf-8-sig") if isinstance(content, bytes) else content
+    try:
+        text = content.decode("utf-8-sig") if isinstance(content, bytes) else content
+    except UnicodeDecodeError as exc:
+        raise IntegrationError("File is not readable as UTF-8 text — re-export it as CSV.") from exc
     reader = csv.reader(StringIO(text))
     table = [r for r in reader if any(str(c).strip() for c in r)]  # drop blank lines
     return table[skip_rows:]
@@ -73,8 +76,14 @@ def _rows_from_xlsx(content, skip_rows, sheet):
     from openpyxl import load_workbook
 
     data = content if isinstance(content, bytes) else content.encode()
-    wb = load_workbook(BytesIO(data), read_only=True, data_only=True)
-    ws = wb[sheet] if sheet else wb.worksheets[0]
+    try:
+        wb = load_workbook(BytesIO(data), read_only=True, data_only=True)
+    except Exception as exc:  # openpyxl raises several types for corrupt/foreign files
+        raise IntegrationError("File could not be opened as an Excel workbook.") from exc
+    try:
+        ws = wb[sheet] if sheet else wb.worksheets[0]
+    except KeyError as exc:
+        raise IntegrationError(f"Worksheet {sheet!r} not found in the workbook.") from exc
     table = [list(r) for r in ws.iter_rows(values_only=True)]
     table = [r for r in table if any(c not in (None, "") for c in r)]
     return table[skip_rows:]

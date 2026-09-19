@@ -117,6 +117,9 @@ MIDDLEWARE = [
 RLS_ENABLED = env.bool("RLS_ENABLED", default=False)
 RLS_APP_ROLE = env("RLS_APP_ROLE", default="fincare_app")
 
+# Max size of an uploaded import file (bank statement / platform earnings).
+INTEGRATIONS_MAX_UPLOAD_MB = env.int("INTEGRATIONS_MAX_UPLOAD_MB", default=10)
+
 ROOT_URLCONF = "fincare.urls"
 WSGI_APPLICATION = "fincare.wsgi.application"
 ASGI_APPLICATION = "fincare.asgi.application"
