@@ -30,6 +30,7 @@ import {
   TrendingDown,
   Truck,
   Umbrella,
+  Upload,
   Users,
   Wallet,
 } from "lucide-react";
@@ -101,6 +102,7 @@ export const NAV: NavEntry[] = [
       { id: "banking", label: "Bank Accounts", href: "/banking", icon: Landmark },
       { id: "reconcile", label: "Reconciliation", href: "/reconcile", icon: Scale },
       { id: "cashbook", label: "Cashbook", href: "/cashbook", icon: Wallet },
+      { id: "imports", label: "File Imports", href: "/imports", icon: Upload },
     ],
   },
   {
