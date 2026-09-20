@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-09-19
+## [0.5.0] - 2026-09-20
 
 **Every app is now operable from the browser.** v0.4.0 shipped a backend whose
 accounting engine was complete but largely unreachable: nine apps had fully
@@ -111,6 +111,30 @@ What changed is reach.
 - A non-UTF-8 CSV, an unopenable workbook, or a missing worksheet now surface
   as a clean import error instead of an unhandled decoder or openpyxl
   exception.
+
+### Security
+
+- **Row-Level Security now covers every transactional table.** The original RLS
+  migration protected the ten tables that existed when it landed; every app
+  built afterwards shipped tables carrying `entity_id` with no policy at all —
+  53 of 62 were unprotected, so a query that forgot to filter could return
+  another entity's rows. All of them now carry the isolation policy, and a test
+  introspects the models (rather than a hand-maintained list) so a new table
+  without a policy fails the build.
+- **Fixed the "no tenant context" check**, which did not mean what it said. The
+  policy tested the context variable for NULL, but a PostgreSQL custom setting
+  reverts to the *empty string* once it has been set and the transaction ends.
+  On a reused connection an unset context therefore matched **nothing instead of
+  everything** — inverting the intended failure mode and silently breaking the
+  superuser path, whose way of signalling "unrestricted" is to leave the context
+  unset. Existing databases pick up the corrected policy on migrate.
+- Still outstanding, and deliberately recorded rather than assumed done: child
+  tables with no `entity_id` of their own (journal lines, invoice lines,
+  statement lines, payslips) remain unprotected, since an `entity_id`-keyed
+  policy cannot express them. See the ADR-0008 amendment.
+
+Row-Level Security remains gated by `RLS_ENABLED` (default off), so none of this
+changes behaviour until it is switched on.
 
 ### Documentation
 
