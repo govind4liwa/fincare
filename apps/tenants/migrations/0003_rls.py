@@ -37,7 +37,9 @@ ROLE_REVERSE = "-- role/grants intentionally left in place on reverse"
 
 def _policy_operations():
     ops = [migrations.RunSQL(ROLE_FORWARD, reverse_sql=ROLE_REVERSE)]
-    for table, entity_col in rls.SCOPED_TABLES:
+    # Frozen list: this migration must keep applying exactly the tables it
+    # applied when written — later apps' tables do not exist at this point.
+    for table, entity_col in rls.INITIAL_SCOPED_TABLES:
         ops.append(
             migrations.RunSQL(
                 rls.enable_policy_sql(table, entity_col),
