@@ -342,3 +342,24 @@ def test_no_transactional_table_is_left_unprotected():
         "entity_id policy, a parent-scoped child policy, or list them in "
         f"RLS_UNSCOPED_REFERENCE_TABLES with a reason: {unprotected}"
     )
+
+
+def test_entity_policies_use_the_index_friendly_initplan_predicate():
+    """Guards against reverting to the slow predicate.
+
+    ``entity_id::text = ANY(string_to_array(...))`` returns the same rows, so no
+    behavioural test notices a regression — but it defeats the entity index and
+    re-splits the GUC for every row, which made group reports under RLS about
+    twice as slow at year-one volume.
+    """
+    from apps.tenants import rls
+
+    scoped = {t for t, _ in rls.SCOPED_TABLES}
+    with connection.cursor() as cur:
+        cur.execute("SELECT tablename, qual FROM pg_policies WHERE schemaname = 'public'")
+        quals = {t: q for t, q in cur.fetchall() if t in scoped}
+
+    slow = sorted(t for t, q in quals.items() if "::text = ANY" in q)
+    not_initplan = sorted(t for t, q in quals.items() if "::uuid[]" not in q)
+    assert slow == [], f"entity policies still casting the column to text: {slow}"
+    assert not_initplan == [], f"entity policies not using the uuid[] InitPlan form: {not_initplan}"
