@@ -176,8 +176,8 @@ unset. The predicate is now `NULLIF(current_setting(...), '') IS NULL`, and
   `entity_id`-keyed policy cannot express them; they are reachable only through
   a scoped parent, so an unfiltered query directly against one of them is still
   a leak. Covering them needs a parent-join policy whose per-row subquery cost
-  must be weighed against the reporting performance budget — **an open
-  follow-up, not a solved problem**.
+  must be weighed against the reporting performance budget — **resolved in the
+  2026-09-24 amendment below**.
 - Group-level reference data with no entity (`core_currency`,
   `tenants_businesscategory`, `tenants_vatgroup`, `users_user`).
 
@@ -185,3 +185,64 @@ A VAT-group `tax_taxreturn` row carries `entity_id` NULL (it belongs to the
 group, not one entity) and the policy always admits NULL, so RLS isolates
 standalone filers while group returns stay scoped at the application layer by
 VAT-group membership. Intentional, and asserted by test.
+
+---
+
+## Amendment — child tables (2026-09-24)
+
+The previous amendment left 24 tables with no `entity_id` of their own
+unprotected — journal lines, invoice/bill/voucher/credit-note lines, statement
+lines, reconciliation items, payslips and their lines, WPS records, documents,
+loan schedules, tax boxes. They were reachable only through a scoped parent, so
+an unfiltered query aimed straight at one still returned every entity's rows.
+For `ledger_journalline` that is the actual postings. `0007_rls_child_tables`
+closes it.
+
+### Policy: "my parent row is visible to you"
+
+```sql
+CREATE POLICY <child>_rls ON <child>
+USING (EXISTS (SELECT 1 FROM <parent> p WHERE p.id = <child>.<fk>));
+```
+
+Nothing about entities is restated. PostgreSQL applies the parent's own policy
+inside that subquery, so the unset-context sentinel, NULL-entity rows and
+multi-level chains all compose from the parent. A grandchild (payslip line →
+payslip → run) therefore needs one level of `EXISTS`, not a nested one, because
+its parent is itself policy-scoped. A test walks every chain and asserts it
+terminates at an entity-scoped table, so a mis-specified parent fails the suite
+rather than silently hiding or exposing rows.
+
+### Why not denormalise `entity_id` onto each child
+
+CLAUDE.md §5 says every transactional table carries `entity_id`, which these
+child tables do not, so denormalising was the obvious candidate. It was measured
+rather than assumed, on 500k journal lines across 10 entities:
+
+| Query shape | Parent-visibility policy | Denormalised `entity_id` |
+|---|---|---|
+| Bare `SUM` over the child table | ~430 ms (no parallelism) | ~165 ms |
+| Report shape: lines joined to entries, date-filtered | ~74–83 ms | ~49–72 ms |
+
+The first row looks damning, but no caller issues that query. Every read of
+`JournalLine` in `apps/reports` and `apps/banking` filters through `entry__`
+(`entry__status`, `entry__entity_id`, `entry__entry_date`), which is the second
+row — and a bare unfiltered scan of a child table is precisely what these
+policies exist to block, so optimising for it is optimising for the attack.
+
+Against a modest cost on the shapes that actually run, denormalising would mean
+a schema change, backfill and write-path guarantee across 24 tables, plus
+ongoing drift risk between a child's `entity_id` and its parent's. The
+parent-visibility policy needs none of that: no schema change, no backfill, no
+write-path change, and drift is impossible because there is nothing duplicated.
+
+If profiling ever shows a hot path scanning a child directly, denormalise **that
+table** — with a composite foreign key to its parent on `(id, entity_id)` so the
+database makes drift impossible — rather than doing it wholesale.
+
+### Coverage guard
+
+`test_no_transactional_table_is_left_unprotected` now requires every table in a
+business app to have a policy or appear in an explicit reference-data list with
+a reason. The earlier guard only checked `entity_id`-bearing tables, which is
+why `ledger_journalline` stayed unprotected through five releases.

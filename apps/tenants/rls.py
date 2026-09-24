@@ -50,6 +50,37 @@ ALTER TABLE {table} DISABLE ROW LEVEL SECURITY;
 """.strip()
 
 
+def enable_child_policy_sql(
+    table: str, parent_table: str, fk_column: str, *, policy: str | None = None
+) -> str:
+    """SQL for a child table that has no ``entity_id`` of its own.
+
+    The policy is simply "my parent row is visible to you". PostgreSQL applies
+    the parent's own RLS policy inside this subquery, so correctness composes:
+    the unset-context case, NULL-entity rows, and multi-level chains all fall
+    out of the parent's policy rather than being restated here. A grandchild
+    (payslip line -> payslip -> run) therefore needs one level of EXISTS, not
+    a nested one, because its parent is itself policy-scoped.
+    """
+    policy_name = policy or f"{table}_rls"
+    # S608: identifiers are interpolated, but every one comes from the
+    # CHILD_SCOPED_TABLES constant below and is asserted against the live schema
+    # by the RLS tests — never from a request. Identifiers cannot be bound as
+    # parameters in DDL, so there is no parameterised alternative.
+    return f"""
+ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {table} FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS {policy_name} ON {table};
+CREATE POLICY {policy_name} ON {table}
+USING (
+    EXISTS (SELECT 1 FROM {parent_table} p WHERE p.id = {table}.{fk_column})
+)
+WITH CHECK (
+    EXISTS (SELECT 1 FROM {parent_table} p WHERE p.id = {table}.{fk_column})
+);
+""".strip()  # noqa: S608
+
+
 # ---------------------------------------------------------------------------
 # Tenant-scoped tables and the column that carries the entity id.
 # (table, entity_column)
@@ -155,3 +186,50 @@ TRANSACTIONAL_SCOPED_TABLES = [
 
 # Everything RLS covers. Tests and tooling read this; migrations do not.
 SCOPED_TABLES = INITIAL_SCOPED_TABLES + TRANSACTIONAL_SCOPED_TABLES
+
+# ---------------------------------------------------------------------------
+# Child tables: no entity_id of their own, scoped through their parent.
+# (table, parent_table, fk_column)
+#
+# Applied by 0007_rls_child_tables. Order does not matter — policies are
+# evaluated at query time, so a grandchild may be listed before its parent.
+#
+# Why parent-visibility rather than denormalising entity_id onto each child:
+# measured on 500k journal lines across 10 entities, a report-shaped query
+# (lines joined to entries, date-filtered — the shape every caller in
+# apps/reports and apps/banking actually uses, since they all filter through
+# `entry__`) costs tens of milliseconds either way. Denormalising is faster on
+# a bare unfiltered scan of a child table, but the application never issues
+# one, and that case is precisely what these policies exist to block. Against
+# that, denormalising means a schema change, backfill and write-path guarantee
+# on 24 tables, plus drift risk between child and parent. If profiling ever
+# shows a hot path scanning a child directly, denormalise that table (with a
+# composite FK to its parent on (id, entity_id) so drift is impossible) rather
+# than doing it wholesale.
+# ---------------------------------------------------------------------------
+CHILD_SCOPED_TABLES = [
+    ("ap_debitnoteline", "ap_debitnote", "debit_note_id"),
+    ("ap_purchasebillline", "ap_purchasebill", "bill_id"),
+    ("ar_creditnoteline", "ar_creditnote", "credit_note_id"),
+    ("ar_salesinvoiceline", "ar_salesinvoice", "invoice_id"),
+    ("banking_reconciliationitem", "banking_reconciliation", "reconciliation_id"),
+    ("banking_statementline", "banking_bankstatement", "statement_id"),
+    ("cashbook_denomination", "cashbook_cashcount", "cash_count_id"),
+    ("drivers_driverclearingline", "drivers_driverclearing", "clearing_id"),
+    ("drivers_driverdocument", "drivers_driver", "driver_id"),
+    ("drivers_settlementdeduction", "drivers_settlement", "settlement_id"),
+    ("fleet_depreciationline", "fleet_depreciationrun", "run_id"),
+    ("fleet_loanschedule", "fleet_vehicleloan", "loan_id"),
+    ("fleet_vehicledocument", "fleet_vehicle", "vehicle_id"),
+    ("fleet_vehicleloaninstallment", "fleet_vehicleloan", "loan_id"),
+    ("ledger_journalline", "ledger_journalentry", "entry_id"),
+    ("payroll_employeesalary", "payroll_employee", "employee_id"),
+    ("payroll_payslip", "payroll_run", "run_id"),
+    ("payroll_payslipline", "payroll_payslip", "payslip_id"),  # grandchild
+    ("payroll_wpsbatch", "payroll_run", "run_id"),
+    ("payroll_wpsrecord", "payroll_wpsbatch", "batch_id"),  # grandchild
+    ("reports_statementline", "reports_statementtemplate", "template_id"),
+    ("tax_taxcoderatehistory", "accounts_taxcode", "tax_code_id"),
+    ("tax_taxreturnbox", "tax_taxreturn", "tax_return_id"),
+    ("vouchers_voucherline", "vouchers_voucher", "voucher_id"),
+]
