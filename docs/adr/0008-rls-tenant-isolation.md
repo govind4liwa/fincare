@@ -295,3 +295,80 @@ GRANT fincare_app TO <application_login_role>;
 This is deliberately left to deployment rather than baked into a migration: the
 login role's name is environment-specific and is not known to the codebase. It
 is called out in DEVELOPMENT.md alongside the rest of the RLS rollout.
+
+---
+
+## Amendment — performance at group scale (2026-09-24)
+
+The Phase 18 roadmap gate reads "reports within performance budget", but no
+budget had ever been defined, so the gate was unmeasurable. The working budget
+proposed here, pending confirmation, is **≤ 1 s** for a single-entity
+interactive report and **≤ 3 s** for a group/consolidated report, measured at
+year-one volume.
+
+### Benchmark
+
+A scratch database with the real schema and all RLS policies: 25 entities (the
+group's size), 300,000 posted journal entries and 1,200,000 journal lines over
+twelve months, 70% of entries touching a bank account. Every report was timed
+as the median of three runs after a warm-up, both **raw** (superuser, RLS
+bypassed) and **under RLS** (restricted role with a real tenant context), with a
+check that the RLS run still returned real data.
+
+| Report | Scope | Raw | RLS (original) | RLS (this amendment) |
+|---|---|---|---|---|
+| Trial balance, accrual | 1 entity | 0.30 s | 0.34 s | 0.34 s |
+| Trial balance, accrual | 25 entities | 0.57 s | **10.8 s** | 5.3 s |
+| Trial balance, cash | 25 entities | 1.49 s | **14.5 s** | 7.4 s |
+| Consolidated TB | 25 entities | 0.85 s | **12.1 s** | 4.7 s |
+| GL drill-down, 1 account, full year | 1 entity | 2.7 s | 2.6 s | 2.4 s |
+
+P&L, balance sheet, cash flow, profitability and dashboard were within budget in
+every configuration (0.02–0.7 s).
+
+### Fixed here: the entity predicate
+
+`entity_id::text = ANY(string_to_array(current_setting(...)))` had two costs.
+Casting the column to text made the entity check a row-by-row filter that no
+index could serve. And the unwrapped `string_to_array(current_setting(...))` was
+re-evaluated for every row checked. `0008_rls_predicate_initplan` rewrites it
+as `entity_id = ANY((SELECT …::uuid[])::uuid[])`: the array is cast instead of
+the column, and the scalar subquery becomes an InitPlan evaluated once per
+query. Same rows, roughly half the RLS cost at group scale (table above).
+
+### Correction to the child-table amendment: the dominant cost
+
+The 2026-09-24 child-table amendment chose parent-visibility policies over
+denormalising `entity_id`, on a benchmark of **one entity over three months**.
+That benchmark missed the case that matters. A child policy's `EXISTS` re-checks
+the parent row **once per child row**, so a full-year opening balance across 25
+entities runs it about 1.1 million times — even though the report query has
+already joined and filtered that exact parent row.
+
+Isolating it: with RLS left in place on journal entries but switched off on
+`ledger_journalline` (so every line stays visible and only the entry policy
+applies), group trial balances ran at **0.5–0.9 s** under RLS. **The journal-line
+child policy is roughly 90% of the group-scale RLS overhead.**
+
+A prototype that denormalises `entity_id` onto `ledger_journalline` and gives it
+a direct entity policy brought the group accrual TB from 5.3 s to **0.78 s** and
+the consolidated TB from 4.7 s to **0.69 s**, with identical results.
+
+That is the escape hatch the child-table amendment already named, applied to
+the one table on every report's hot path. It is **not done here**, because it is
+a schema change to the core ledger: a new column, a backfill, a write-path
+guarantee on every posting service, and a composite foreign key on
+`(entry_id, entity_id)` to prevent drift. That warrants its own decision and
+ADR. The other 23 child tables are not on the reporting hot path and stay
+parent-scoped.
+
+### Also found, not RLS
+
+- **Cash-basis trial balance** builds its "entries that touch cash" set with a
+  subquery that has no entity, status or date filter. It seq-scans every
+  journal line in the database, then looks up each of ~210,000 entries, and
+  only then applies the report's filters. That's 3.2 s on its own under RLS at
+  group scale.
+- **GL drill-down** returns every line for an account over the date range as
+  fully built model objects. That's ~17,000 rows for one bank account's year,
+  at 2.3–2.7 s regardless of RLS. It needs pagination.
