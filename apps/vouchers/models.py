@@ -37,6 +37,8 @@ NUMBER_PREFIX = {
 
 
 class Voucher(BaseModel):
+
+    DELETE_PROTECTED_STATUSES = ("posted", "reversed", "cancelled")
     entity = models.ForeignKey("tenants.Entity", on_delete=models.PROTECT, related_name="vouchers")
     branch = models.ForeignKey(
         "tenants.Branch", on_delete=models.PROTECT, null=True, blank=True, related_name="+"

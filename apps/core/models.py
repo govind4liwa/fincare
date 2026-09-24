@@ -25,8 +25,27 @@ from django.utils import timezone
 from apps.core.managers import AllObjectsManager, SoftDeleteManager
 
 
+class PostedRowProtectedError(ValueError):
+    """Raised when a document that has entered the accounting record is deleted.
+
+    A subclass of ``ValueError`` so existing ``except ValueError`` handlers
+    around model writes keep working.
+    """
+
+
 class BaseModel(models.Model):
-    """Abstract base: UUID pk, audit trail, soft delete."""
+    """Abstract base: UUID pk, audit trail, soft delete.
+
+    Subclasses that post to the general ledger set ``DELETE_PROTECTED_STATUSES``
+    to the statuses after which the row is part of the accounting record. Once a
+    row reaches one of those, ``delete()`` and ``hard_delete()`` refuse
+    (CLAUDE.md §4.5 — corrections go through a reversal or credit note, never a
+    deletion). Drafts stay deletable.
+    """
+
+    #: Statuses after which this row may not be deleted by any path. Empty for
+    #: masters and reference data, which are deactivated rather than posted.
+    DELETE_PROTECTED_STATUSES: tuple[str, ...] = ()
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -57,14 +76,44 @@ class BaseModel(models.Model):
         abstract = True
         base_manager_name = "all_objects"
 
+    def _assert_deletable(self):
+        """Refuse deletion once the row is part of the accounting record.
+
+        Two independent tests, because neither alone is sufficient:
+
+        * A linked ``journal_entry`` means this document has hit the general
+          ledger, whatever its status is called. ``payroll.Advance`` stays
+          ``open`` after it posts, so a status check alone would miss it.
+        * ``DELETE_PROTECTED_STATUSES`` covers rows that are part of the record
+          without a journal entry of their own — a filed tax return, a completed
+          reconciliation, an approved loan schedule, a closed period.
+        """
+        if getattr(self, "journal_entry_id", None) is not None:
+            raise PostedRowProtectedError(
+                f"{type(self).__name__} {self.pk} has posted to the general ledger "
+                "and cannot be deleted. Reverse it instead."
+            )
+        status = getattr(self, "status", None)
+        if status is not None and status in self.DELETE_PROTECTED_STATUSES:
+            raise PostedRowProtectedError(
+                f"{type(self).__name__} {self.pk} is {status} and cannot be deleted. "
+                "Reverse it or raise a credit/debit note instead."
+            )
+
     def delete(self, using=None, keep_parents=False):
         """Soft delete: flag the row instead of removing it."""
+        self._assert_deletable()
         self.is_deleted = True
         self.deleted_at = timezone.now()
         self.save(using=using, update_fields=["is_deleted", "deleted_at", "updated_at"])
 
     def hard_delete(self, using=None, keep_parents=False):
-        """Permanently remove the row (escape hatch)."""
+        """Permanently remove the row (escape hatch).
+
+        Guarded too: a posted row must not be removable by a shortcut that
+        exists for cleaning up drafts and test data.
+        """
+        self._assert_deletable()
         return super().delete(using=using, keep_parents=keep_parents)
 
 

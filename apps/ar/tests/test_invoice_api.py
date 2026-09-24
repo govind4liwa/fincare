@@ -99,3 +99,37 @@ def test_non_member_sees_no_invoices(entity, customer, sr_tax, revenue_account):
     res = client.get("/api/v1/invoices/")
     assert res.status_code == 200
     assert res.data["results"] == []
+
+
+def test_posted_invoice_cannot_be_deleted(entity, customer, sr_tax, revenue_account):
+    """A posted invoice must not be deletable — its journal entry is in the GL.
+
+    Before the delete guard this returned 204 and soft-deleted the invoice,
+    leaving the revenue and output VAT posted with no source document: the AR
+    subledger and the GL disagreed, silently.
+    """
+    client = _superuser()
+    invoice_id = client.post(
+        "/api/v1/invoices/",
+        _payload(entity, customer, revenue_account, sr_tax),
+        format="json",
+    ).data["id"]
+    assert client.post(f"/api/v1/invoices/{invoice_id}/post/", {}, format="json").status_code == 200
+
+    res = client.delete(f"/api/v1/invoices/{invoice_id}/")
+    assert res.status_code == 409, res.content
+    assert SalesInvoice.objects.filter(id=invoice_id).exists()
+
+
+def test_draft_invoice_can_still_be_deleted(entity, customer, sr_tax, revenue_account):
+    """The guard must not overreach — an unposted draft is still disposable."""
+    client = _superuser()
+    invoice_id = client.post(
+        "/api/v1/invoices/",
+        _payload(entity, customer, revenue_account, sr_tax),
+        format="json",
+    ).data["id"]
+
+    res = client.delete(f"/api/v1/invoices/{invoice_id}/")
+    assert res.status_code == 204, res.content
+    assert not SalesInvoice.objects.filter(id=invoice_id).exists()

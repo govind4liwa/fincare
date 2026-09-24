@@ -138,6 +138,8 @@ class EmployeeSalary(BaseModel):
 class Run(BaseModel):
     """Monthly payroll batch per entity + period."""
 
+    DELETE_PROTECTED_STATUSES = ("approved", "posted", "paid")
+
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="payroll_runs"
     )
@@ -175,6 +177,8 @@ class Run(BaseModel):
 
 
 class Payslip(BaseModel):
+
+    DELETE_PROTECTED_STATUSES = ("finalised", "paid")
     run = models.ForeignKey(Run, on_delete=models.CASCADE, related_name="payslips")
     employee = models.ForeignKey(Employee, on_delete=models.PROTECT, related_name="payslips")
     working_days = models.DecimalField(max_digits=6, decimal_places=2, default=30)
@@ -214,6 +218,8 @@ class PayslipLine(BaseModel):
 
 class WpsBatch(BaseModel):
     """Salary Control Record (employer header) for a WPS SIF file."""
+
+    DELETE_PROTECTED_STATUSES = ("submitted",)
 
     class Status(models.TextChoices):
         GENERATED = "generated", "Generated"
@@ -263,6 +269,8 @@ class WpsRecord(BaseModel):
 
 class Gratuity(BaseModel):
     """End-of-service benefit accrual / settlement (EOSB)."""
+
+    DELETE_PROTECTED_STATUSES = ("posted", "settled")
 
     class Type(models.TextChoices):
         ACCRUAL = "accrual", "Accrual"
@@ -339,6 +347,8 @@ class Leave(BaseModel):
 
 class Advance(BaseModel):
     """Salary advance / loan, recovered via payslips."""
+
+    DELETE_PROTECTED_STATUSES = ("recovering", "cleared")
 
     class Status(models.TextChoices):
         OPEN = "open", "Open"

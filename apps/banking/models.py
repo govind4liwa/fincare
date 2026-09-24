@@ -57,6 +57,8 @@ class BankTransfer(BaseModel):
     CR source GL (amount + charges).
     """
 
+    DELETE_PROTECTED_STATUSES = ("posted", "reversed", "cancelled")
+
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="bank_transfers"
     )
@@ -97,6 +99,8 @@ class PosSettlement(BaseModel):
     cleared here when the acquirer deposits the net into the bank.
     """
 
+    DELETE_PROTECTED_STATUSES = ("posted", "reversed", "cancelled")
+
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="pos_settlements"
     )
@@ -131,6 +135,8 @@ class PosSettlement(BaseModel):
 
 class BankStatement(BaseModel):
     """An imported bank statement (header)."""
+
+    DELETE_PROTECTED_STATUSES = ("reconciled",)
 
     class Status(models.TextChoices):
         IMPORTED = "imported", "Imported"
@@ -185,6 +191,9 @@ class StatementLine(BaseModel):
 
 
 class Reconciliation(BaseModel):
+
+    DELETE_PROTECTED_STATUSES = ("completed",)
+
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
         IN_PROGRESS = "in_progress", "In progress"

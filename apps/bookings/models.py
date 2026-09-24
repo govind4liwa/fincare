@@ -30,6 +30,8 @@ class Trip(BaseModel):
     """A single trip. Profitability dims (vehicle/driver/platform/customer) roll up
     into the periodic aggregate revenue posting."""
 
+    DELETE_PROTECTED_STATUSES = ("invoiced", "settled")
+
     entity = models.ForeignKey("tenants.Entity", on_delete=models.PROTECT, related_name="trips")
     trip_date = models.DateField(db_index=True)
     trip_type = models.CharField(max_length=16, choices=TripType.choices)

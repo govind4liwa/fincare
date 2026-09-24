@@ -72,6 +72,8 @@ class Advance(BaseModel):
     Posting: DR Driver Advance (asset, driver dim) / CR Bank.
     """
 
+    DELETE_PROTECTED_STATUSES = ("posted", "reversed", "cancelled")
+
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="driver_advances"
     )
@@ -118,6 +120,8 @@ class Settlement(BaseModel):
     Receivable). ``allows_negative_net`` is the explicit authorisation to create
     that receivable — it does not assert receipt.
     """
+
+    DELETE_PROTECTED_STATUSES = ("posted", "reversed", "cancelled")
 
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="settlements"
@@ -213,6 +217,8 @@ class DriverClearing(BaseModel):
     ``DriverAccountingConfig``, the same account the settlement debited, so a
     receipt cannot credit somewhere the receivable never sat.
     """
+
+    DELETE_PROTECTED_STATUSES = ("posted", "reversed", "cancelled")
 
     class Kind(models.TextChoices):
         RECEIPT = "receipt", "Receipt from driver"

@@ -48,6 +48,8 @@ class Supplier(BaseModel):
 
 
 class PurchaseBill(BaseModel):
+
+    DELETE_PROTECTED_STATUSES = ("posted", "partially_paid", "paid", "cancelled")
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="purchase_bills"
     )
@@ -118,6 +120,8 @@ class PurchaseBillLine(BaseModel):
 
 
 class DebitNote(BaseModel):
+
+    DELETE_PROTECTED_STATUSES = ("posted", "partially_paid", "paid", "cancelled")
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="debit_notes"
     )
