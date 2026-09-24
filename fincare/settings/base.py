@@ -258,6 +258,10 @@ SPECTACULAR_SETTINGS = {
     ),
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # The schema maps every endpoint, field and model shape - the whole attack
+    # surface. drf-spectacular serves it AllowAny by default, and these routes
+    # are not DEBUG-gated, so without this it was public in production.
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/v[0-9]+/",
     "SWAGGER_UI_SETTINGS": {
