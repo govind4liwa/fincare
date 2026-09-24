@@ -63,22 +63,24 @@ def enable_child_policy_sql(
     a nested one, because its parent is itself policy-scoped.
     """
     policy_name = policy or f"{table}_rls"
-    # S608: identifiers are interpolated, but every one comes from the
-    # CHILD_SCOPED_TABLES constant below and is asserted against the live schema
-    # by the RLS tests — never from a request. Identifiers cannot be bound as
-    # parameters in DDL, so there is no parameterised alternative.
+    # Identifiers are interpolated because DDL cannot bind them as parameters.
+    # Every one comes from the CHILD_SCOPED_TABLES constant below, and the RLS
+    # tests assert each against the live schema — none is ever request-derived.
+    visible_parent = (
+        f"EXISTS (SELECT 1 FROM {parent_table} p WHERE p.id = {table}.{fk_column})"  # nosec B608
+    )
     return f"""
 ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;
 ALTER TABLE {table} FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS {policy_name} ON {table};
 CREATE POLICY {policy_name} ON {table}
 USING (
-    EXISTS (SELECT 1 FROM {parent_table} p WHERE p.id = {table}.{fk_column})
+    {visible_parent}
 )
 WITH CHECK (
-    EXISTS (SELECT 1 FROM {parent_table} p WHERE p.id = {table}.{fk_column})
+    {visible_parent}
 );
-""".strip()  # noqa: S608
+""".strip()
 
 
 # ---------------------------------------------------------------------------
