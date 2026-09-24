@@ -57,6 +57,14 @@ def _validate_lines(entry, lines):
         if (debit > 0) == (credit > 0):
             raise PostingError(f"Line {ln.line_no}: exactly one of debit/credit must be non-zero.")
         account = ln.account
+        # A line may only post to its own entry's entity. Intercompany work is
+        # two entries, each on that entity's own due-from/due-to accounts
+        # (CLAUDE.md §5) — never one entry reaching into another entity's books.
+        if account.entity_id != entry.entity_id:
+            raise PostingError(
+                f"Line {ln.line_no}: account {account.code} belongs to a different entity "
+                "than this journal entry."
+            )
         if not (account.is_postable and account.is_active):
             raise PostingError(f"Account {account.code} is not postable/active.")
         if entry.source_type == "manual" and not account.allow_manual_posting:
