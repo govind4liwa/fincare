@@ -17,6 +17,15 @@ any reused connection.
 
 GUC = "app.current_entities"
 
+#: Written to the GUC when a request resolves to *zero* accessible entities.
+#: It must not be the empty string: an empty GUC is indistinguishable from an
+#: unset one, which the policies treat as "no tenant context, therefore
+#: unrestricted". A user with no memberships would then bypass RLS entirely —
+#: fail-open, in exactly the case that should be most closed. This is a valid
+#: UUID so the ``entity_id::text = ANY(...)`` comparison stays well-typed, and
+#: it can never be a real entity id.
+NO_ACCESS_SENTINEL = "00000000-0000-0000-0000-000000000000"
+
 
 def enable_policy_sql(
     table: str, entity_col: str = "entity_id", *, policy: str | None = None

@@ -176,6 +176,43 @@ Migration rules:
 
 ---
 
+## 7b. Row-Level Security rollout (ADR-0008)
+
+Tenant isolation is enforced in the database by PostgreSQL RLS, but it is gated
+by `RLS_ENABLED` (default `False`) so it can be switched on deliberately. Two
+things must be true before enabling it in an environment.
+
+**1. The application must connect as a non-superuser.** A superuser bypasses RLS
+entirely, so leaving the app on a superuser login silently defeats the policies
+even with `RLS_ENABLED=True`.
+
+**2. That login role must be allowed to assume the restricted role.** The
+middleware issues `SET LOCAL ROLE fincare_app` on every request. Migration
+`0003_rls` creates `fincare_app` and grants it table privileges, but it cannot
+grant *membership* — the login role's name is environment-specific. Run once,
+as a superuser, against each environment's database:
+
+```sql
+GRANT fincare_app TO <application_login_role>;
+```
+
+Without it every request fails with `permission denied to set role "fincare_app"`.
+
+Then set `RLS_ENABLED=true` in the environment and restart. To confirm it is
+actually on, check that a request is scoped rather than trusting the setting:
+
+```sql
+-- inside a request the app should be fincare_app, not the login role
+SELECT current_user, current_setting('app.current_entities', true);
+```
+
+An unset (or empty) context means *unrestricted* — that is the sentinel for
+migrations, shell sessions and superusers. A request that resolves to no
+accessible entities is given an explicit no-access sentinel instead, so "no
+entities" can never be mistaken for "no context".
+
+---
+
 ## 8. Pre-commit Hooks
 
 Installed automatically by `make install` or `bootstrap` scripts. Hooks run:
