@@ -2,7 +2,14 @@
 
 from rest_framework import serializers
 
-from apps.drivers.models import Advance, Driver, Settlement, SettlementDeduction
+from apps.drivers.models import (
+    Advance,
+    Driver,
+    DriverClearing,
+    DriverClearingLine,
+    Settlement,
+    SettlementDeduction,
+)
 from apps.settings.services.driver_accounting import get_config
 
 
@@ -176,3 +183,118 @@ class SettlementSerializer(serializers.ModelSerializer):
         for line in deductions:
             SettlementDeduction.objects.create(settlement=settlement, **line)
         return settlement
+
+
+class DriverClearingLineSerializer(serializers.ModelSerializer):
+    settlement_no = serializers.CharField(source="settlement.settlement_no", read_only=True)
+    settlement_date = serializers.DateField(source="settlement.settlement_date", read_only=True)
+
+    class Meta:
+        model = DriverClearingLine
+        fields = ["id", "settlement", "settlement_no", "settlement_date", "amount"]
+
+
+class DriverClearingSerializer(serializers.ModelSerializer):
+    lines = DriverClearingLineSerializer(many=True)
+    driver_code = serializers.CharField(source="driver.code", read_only=True)
+    driver_name = serializers.CharField(source="driver.name", read_only=True)
+    kind_display = serializers.CharField(source="get_kind_display", read_only=True)
+
+    class Meta:
+        model = DriverClearing
+        fields = [
+            "id",
+            "entity",
+            "driver",
+            "driver_code",
+            "driver_name",
+            "kind",
+            "kind_display",
+            "clearing_no",
+            "clearing_date",
+            "amount",
+            "bank_account",
+            "receivable_account",
+            "write_off_account",
+            "reference",
+            "narration",
+            "status",
+            "journal_entry",
+            "lines",
+        ]
+        # Numbering, the resolved accounts and status are owned by the posting
+        # service; they are outcomes of posting, not inputs to it.
+        read_only_fields = [
+            "clearing_no",
+            "receivable_account",
+            "write_off_account",
+            "status",
+            "journal_entry",
+        ]
+
+    def validate(self, attrs):
+        entity = attrs.get("entity") or getattr(self.instance, "entity", None)
+        driver = attrs.get("driver") or getattr(self.instance, "driver", None)
+        kind = attrs.get("kind") or getattr(self.instance, "kind", DriverClearing.Kind.RECEIPT)
+        bank = attrs.get("bank_account") or getattr(self.instance, "bank_account", None)
+        amount = attrs.get("amount")
+        lines = attrs.get("lines")
+
+        if entity is not None and driver is not None and driver.entity_id != entity.id:
+            raise serializers.ValidationError({"driver": "Driver belongs to a different entity."})
+        if amount is not None and amount <= 0:
+            raise serializers.ValidationError({"amount": "Clearing amount must be positive."})
+
+        # A receipt moves money and must say where; a write-off moves none.
+        # Checked here for a precise field error; the posting service re-validates
+        # as the authority.
+        if kind == DriverClearing.Kind.RECEIPT and bank is None:
+            raise serializers.ValidationError(
+                {"bank_account": "Required — a receipt must say which bank account was paid into."}
+            )
+        if kind == DriverClearing.Kind.WRITE_OFF and bank is not None:
+            raise serializers.ValidationError(
+                {"bank_account": "A write-off moves no money, so it cannot name a bank account."}
+            )
+        if entity is not None and bank is not None and bank.entity_id != entity.id:
+            raise serializers.ValidationError(
+                {"bank_account": "Bank account belongs to a different entity."}
+            )
+
+        if lines is not None:
+            if not lines:
+                raise serializers.ValidationError(
+                    {"lines": "Apply the clearing to at least one settlement."}
+                )
+            if any((line.get("amount") or 0) <= 0 for line in lines):
+                raise serializers.ValidationError(
+                    {"lines": "Each applied amount must be positive."}
+                )
+            settlements = [line["settlement"] for line in lines if line.get("settlement")]
+            if len({s.id for s in settlements}) != len(settlements):
+                raise serializers.ValidationError(
+                    {"lines": "A settlement may only appear once on a clearing."}
+                )
+            for settlement in settlements:
+                if driver is not None and settlement.driver_id != driver.id:
+                    raise serializers.ValidationError(
+                        {"lines": "A settlement belongs to a different driver."}
+                    )
+            if amount is not None:
+                applied = sum((line.get("amount") or 0) for line in lines)
+                if applied != amount:
+                    raise serializers.ValidationError(
+                        {
+                            "lines": (
+                                f"Applied {applied} does not equal the clearing amount {amount}."
+                            )
+                        }
+                    )
+        return attrs
+
+    def create(self, validated_data):
+        lines = validated_data.pop("lines", [])
+        clearing = DriverClearing.objects.create(**validated_data)
+        for line in lines:
+            DriverClearingLine.objects.create(clearing=clearing, **line)
+        return clearing

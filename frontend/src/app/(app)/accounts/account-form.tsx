@@ -211,9 +211,16 @@ export function AccountForm({ id }: { id?: string }) {
       <Card>
         <CardContent className="grid grid-cols-1 gap-4 py-5 sm:grid-cols-2 lg:grid-cols-3">
           <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <Label>
-              Sub-group<span className="text-destructive"> *</span>
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label>
+                Sub-group<span className="text-destructive"> *</span>
+              </Label>
+              {!id && (
+                <Link href="/accounts/groups/new" className="text-xs text-primary hover:underline">
+                  No sub-group? Create one
+                </Link>
+              )}
+            </div>
             {id ? (
               <Input value={selectedGroup ? `${selectedGroup.code} · ${selectedGroup.name}` : ""} disabled />
             ) : (

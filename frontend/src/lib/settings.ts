@@ -93,3 +93,69 @@ export async function saveDriverReceivableAccount(
   if (!res.ok) throw new Error(await detail(res, "Could not save the configuration."));
   return (await res.json()) as DriverAccountingConfig;
 }
+
+/**
+ * A free-form per-entity config override, keyed by name. Mirrors
+ * `apps.settings.models.EntitySetting` — generic key/value storage a
+ * consuming app reads with its own documented defaults (e.g. payroll's
+ * `gratuity_rule`/`sif_layout`, see `apps.payroll.services.config`).
+ */
+export type EntitySetting = {
+  id: string;
+  entity: string;
+  key: string;
+  value: Record<string, unknown>;
+};
+
+// Mirrors apps.payroll.services.config's UAE Labour Law defaults, so the
+// screen can show what applies even before any entity has overridden it.
+export const GRATUITY_RULE_DEFAULT = {
+  days_per_year_first: 21,
+  days_per_year_after: 30,
+  first_years: 5,
+  month_days: 30,
+  cap_years: 2,
+};
+
+export const SIF_LAYOUT_DEFAULT = {
+  version: "MOHRE-SIF-1",
+  delimiter: ",",
+  scr_tag: "SCR",
+  edr_tag: "EDR",
+};
+
+export async function listEntitySettings(entityId: string): Promise<EntitySetting[]> {
+  const res = await apiFetch(`/entity-settings/?entity=${entityId}&limit=100`);
+  if (!res.ok) throw new Error(`Failed to load configuration overrides (${res.status})`);
+  const page = (await res.json()) as Paginated<EntitySetting>;
+  return page.results;
+}
+
+/** Whether this user may write EntitySetting rows (manager/admin). */
+export async function canConfigureEntitySettings(): Promise<boolean> {
+  const res = await apiFetch("/entity-settings/", { method: "OPTIONS" });
+  if (!res.ok) return false;
+  const meta = (await res.json().catch(() => ({}))) as { actions?: Record<string, unknown> };
+  return Boolean(meta.actions?.POST);
+}
+
+/** Create or update the override for `key`. An empty `value` resets to default
+ * (payroll's config reader falls back to its documented default on `{}`). */
+export async function saveEntitySetting(
+  entityId: string,
+  key: string,
+  value: Record<string, unknown>,
+  existing: EntitySetting | null,
+): Promise<EntitySetting> {
+  const res = existing
+    ? await apiFetch(`/entity-settings/${existing.id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ value }),
+      })
+    : await apiFetch("/entity-settings/", {
+        method: "POST",
+        body: JSON.stringify({ entity: entityId, key, value }),
+      });
+  if (!res.ok) throw new Error(await detail(res, "Could not save this override."));
+  return (await res.json()) as EntitySetting;
+}

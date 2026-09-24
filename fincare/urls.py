@@ -24,9 +24,24 @@ api_v1_patterns = [
     path(
         "", include("apps.banking.urls")
     ),  # /api/v1/{bank-accounts,bank-statements,reconciliations}/
+    path(
+        "", include("apps.platforms.urls")
+    ),  # /api/v1/{platforms,earning-imports,platform-settlements}/
+    path("", include("apps.bookings.urls")),  # /api/v1/{trips,contracts}/
+    path(
+        "", include("apps.tax.urls")
+    ),  # /api/v1/{tax-rate-history,vat-returns,corporate-tax-returns}/
+    path(
+        "", include("apps.payroll.urls")
+    ),  # /api/v1/{salary-components,employees,employee-salaries,payroll-runs,payslips}/
+    path(
+        "", include("apps.cashbook.urls")
+    ),  # /api/v1/{cash-accounts,petty-cash-floats,replenishments,cash-counts}/
+    path("", include("apps.users.urls")),  # /api/v1/users/me/
+    path("", include("apps.audit.urls")),  # /api/v1/audit-logs/
+    path("", include("apps.integrations.urls")),  # /api/v1/{import-profiles,import-batches}/
     path("reports/", include("apps.reports.urls")),  # /api/v1/reports/<code>/
     # Future:
-    # path("users/", include("apps.users.urls")),
     # path("accounts/", include("apps.accounts.urls")),
     # path("ledger/", include("apps.ledger.urls")),
     # ...

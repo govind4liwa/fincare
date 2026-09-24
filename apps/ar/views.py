@@ -84,18 +84,66 @@ class SalesInvoiceViewSet(viewsets.ModelViewSet):
             return Response({"sources": []})
         return Response({"sources": allocation.customer_sources(customer.entity, customer)})
 
+    @action(detail=False, methods=["post"], url_path="allocate-bulk")
+    def allocate_bulk(self, request):
+        customer_id = request.data.get("customer")
+        customer = scope_to_entities(Customer.objects.filter(id=customer_id), request.user).first()
+        if customer is None:
+            return Response({"detail": "Customer not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            invoices = allocation.allocate_bulk(
+                customer.entity,
+                customer,
+                source_type=request.data.get("source_type"),
+                source_id=request.data.get("source_id"),
+                lines=request.data.get("lines") or [],
+                user=request.user,
+            )
+        except (ValueError, ArithmeticError, TypeError):
+            logger.exception("Bulk allocation failed for customer %s", customer_id)
+            return Response(
+                {
+                    "detail": "Allocation could not be applied — check the amounts against each "
+                    "invoice and the source balance."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            {
+                "invoices": [
+                    {"id": str(inv.id), "balance": str(inv.balance), "status": inv.status}
+                    for inv in invoices
+                ]
+            }
+        )
+
     @action(detail=True, methods=["get"], url_path="allocations")
     def allocations(self, request, pk=None):
         invoice = self.get_object()
         rows = [
             {
+                "id": str(a.id),
                 "source_type": a.source_type,
                 "amount": str(a.amount_allocated),
                 "date": a.allocation_date,
+                "reversed": a.reversed_at is not None,
             }
             for a in invoice.allocations.all()
         ]
         return Response({"allocations": rows})
+
+    @action(detail=True, methods=["post"], url_path="unallocate")
+    def unallocate(self, request, pk=None):
+        invoice = self.get_object()
+        try:
+            allocation.unallocate(invoice, request.data.get("allocation_id"), user=request.user)
+        except (ValueError, ArithmeticError, TypeError):
+            logger.exception("Un-allocation failed for invoice %s", invoice.pk)
+            return Response(
+                {"detail": "Allocation could not be reversed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self.get_serializer(invoice).data)
 
 
 class CreditNoteViewSet(viewsets.ModelViewSet):

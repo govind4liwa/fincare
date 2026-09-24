@@ -68,3 +68,27 @@ def compute_corporate_tax(ct_return: CorporateTaxReturn, *, user=None) -> Corpor
         message=f"Computed CT FY{ct_return.fiscal_year}: taxable={taxable} tax={tax}",
     )
     return ct_return
+
+
+@transaction.atomic
+def file_corporate_tax_return(ct_return: CorporateTaxReturn, *, reference="", user=None):
+    """Mark a computed corporate tax return as filed with the FTA."""
+    if ct_return.status != TaxReturnStatus.COMPUTED:
+        raise CorporateTaxError(
+            f"Only a computed return can be filed (status={ct_return.status!r})."
+        )
+    ct_return.status = TaxReturnStatus.FILED
+    ct_return.filed_at = timezone.now()
+    ct_return.filed_by = user
+    ct_return.filing_reference = reference
+    ct_return.save(
+        update_fields=["status", "filed_at", "filed_by", "filing_reference", "updated_at"]
+    )
+    audit_record(
+        action="file",
+        instance=ct_return,
+        actor=user,
+        entity_id=ct_return.entity_id,
+        message=f"Filed CT FY{ct_return.fiscal_year} ref={reference}",
+    )
+    return ct_return

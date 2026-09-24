@@ -1,5 +1,7 @@
 import { apiFetch } from "@/lib/api";
 
+export type VatGroup = { id: string; code: string; name: string; trn: string };
+
 export type Entity = {
   id: string;
   code: string;
@@ -8,6 +10,7 @@ export type Entity = {
   trade_name: string;
   accounting_basis: "cash" | "accrual";
   effective_trn: string | null;
+  vat_group: VatGroup | null;
   is_active: boolean;
 };
 

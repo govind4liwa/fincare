@@ -102,11 +102,13 @@ async function refreshAccess(): Promise<string | null> {
 
 /** Authenticated fetch against `/api/v1<path>`, with one transparent token refresh on 401. */
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  // A FormData body must set its own multipart Content-Type (with boundary).
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
   const call = (token: string | null) =>
     fetch(`${API_BASE}${path}`, {
       ...init,
       headers: {
-        "Content-Type": "application/json",
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
         ...(init.headers ?? {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },

@@ -2,12 +2,15 @@ import { apiFetch } from "@/lib/api";
 
 export type Period = {
   id: string;
+  entity: string;
   name: string;
   fiscal_year: number;
   period_no: number;
   start_date: string;
   end_date: string;
-  status: string;
+  status: "open" | "closed" | "locked";
+  closed_at: string | null;
+  closed_by_email?: string;
 };
 
 export type ReportTable = {
@@ -35,6 +38,44 @@ export async function listPeriods(entityId?: string | null): Promise<Period[]> {
   return ((await res.json()) as Paginated<Period>).results;
 }
 
+async function periodDetail(res: Response, fallback: string): Promise<string> {
+  const data = (await res.json().catch(() => ({}))) as {
+    detail?: unknown;
+    non_field_errors?: unknown;
+  };
+  if (typeof data.detail === "string") return data.detail;
+  if (Array.isArray(data.non_field_errors) && typeof data.non_field_errors[0] === "string") {
+    return data.non_field_errors[0];
+  }
+  return fallback;
+}
+
+async function transitionPeriod(id: string, action: "close" | "reopen" | "lock"): Promise<Period> {
+  const res = await apiFetch(`/periods/${id}/${action}/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(await periodDetail(res, `Could not ${action} this period.`));
+  return (await res.json()) as Period;
+}
+
+export const closePeriod = (id: string) => transitionPeriod(id, "close");
+export const reopenPeriod = (id: string) => transitionPeriod(id, "reopen");
+export const lockPeriod = (id: string) => transitionPeriod(id, "lock");
+
+export async function createPeriod(payload: {
+  entity: string;
+  fiscal_year: number;
+  period_no: number;
+  name: string;
+  start_date: string;
+  end_date: string;
+}): Promise<Period> {
+  const res = await apiFetch("/periods/", { method: "POST", body: JSON.stringify(payload) });
+  if (!res.ok) throw new Error(await periodDetail(res, "Could not create this period."));
+  return (await res.json()) as Period;
+}
+
 function reportQuery(entityId: string, periodId: string, basis: string, exportFmt: string) {
   // Use `export=` (not `format=`) — DRF reserves `format` for content negotiation.
   return new URLSearchParams({
@@ -56,22 +97,41 @@ export async function fetchReport(
   return ((await res.json()) as { report: ReportTable }).report;
 }
 
-/** Fetch the xlsx (auth-protected) as a blob and trigger a browser download. */
-export async function downloadReportXlsx(
+/** Fetch a report export (auth-protected) as a blob and trigger a browser download. */
+async function downloadReport(
   code: string,
   entityId: string,
   periodId: string,
   basis: string,
+  exportFmt: "xlsx" | "pdf",
 ): Promise<void> {
-  const res = await apiFetch(`/reports/${code}/?${reportQuery(entityId, periodId, basis, "xlsx")}`);
+  const res = await apiFetch(`/reports/${code}/?${reportQuery(entityId, periodId, basis, exportFmt)}`);
   if (!res.ok) throw new Error("Export failed");
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${code}.xlsx`;
+  a.download = `${code}.${exportFmt}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+export function downloadReportXlsx(
+  code: string,
+  entityId: string,
+  periodId: string,
+  basis: string,
+): Promise<void> {
+  return downloadReport(code, entityId, periodId, basis, "xlsx");
+}
+
+export function downloadReportPdf(
+  code: string,
+  entityId: string,
+  periodId: string,
+  basis: string,
+): Promise<void> {
+  return downloadReport(code, entityId, periodId, basis, "pdf");
 }

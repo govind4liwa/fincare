@@ -27,6 +27,44 @@ class AccountGroupSerializer(serializers.ModelSerializer):
         ]
 
 
+class AccountGroupWriteSerializer(serializers.ModelSerializer):
+    """Create a Main or Sub account group. The code and nature are derived by
+    the service (ADR-0004); like accounts, a group's code is immutable — there
+    is no update path, only create."""
+
+    code = serializers.CharField(read_only=True)
+    nature = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = AccountGroup
+        fields = ["id", "entity", "level", "segment", "parent", "code", "name", "nature"]
+
+    def validate_segment(self, value):
+        if not re.fullmatch(r"\d{3}", value or ""):
+            raise serializers.ValidationError("Segment must be exactly 3 digits (e.g. 400).")
+        return value
+
+    def create(self, validated_data):
+        try:
+            return authoring.create_group(
+                entity=validated_data["entity"],
+                level=validated_data["level"],
+                segment=validated_data["segment"],
+                name=validated_data["name"],
+                parent=validated_data.get("parent"),
+            )
+        except authoring.AccountError as exc:
+            logger.warning("Account group creation rejected: %s", exc)
+            raise serializers.ValidationError(
+                {
+                    "non_field_errors": [
+                        "Could not create the group — it may already exist, or the "
+                        "level / parent / segment is invalid."
+                    ]
+                }
+            ) from exc
+
+
 class AccountSerializer(serializers.ModelSerializer):
     account_type_display = serializers.CharField(source="get_account_type_display", read_only=True)
     sub_group_code = serializers.CharField(source="sub_group.code", read_only=True)

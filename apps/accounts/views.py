@@ -11,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from apps.accounts.models import Account, AccountGroup, TaxCode
 from apps.accounts.serializers import (
     AccountGroupSerializer,
+    AccountGroupWriteSerializer,
     AccountSerializer,
     AccountWriteSerializer,
     TaxCodeSerializer,
@@ -44,15 +45,26 @@ class EntityScopedMasterViewSet(viewsets.ModelViewSet):
         return scope_to_entities(self.queryset, self.request.user, self.entity_field)
 
 
-class AccountGroupViewSet(viewsets.ReadOnlyModelViewSet):
+class AccountGroupViewSet(viewsets.ModelViewSet):
+    """CoA Main/Sub groups: entity-scoped read for all; create needs an
+    accounting role. Like accounts, a group's code is immutable — no update
+    or delete, only create (ADR-0004)."""
+
     serializer_class = AccountGroupSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ReadAnyWriteRole]
+    required_roles = ("accountant", "manager", "admin")
     filterset_fields = ["entity", "level", "nature", "parent", "is_active"]
     ordering_fields = ["code", "name"]
     ordering = ["code"]
+    http_method_names = ["get", "post", "head", "options"]
 
     def get_queryset(self):
         return scope_to_entities(AccountGroup.objects.select_related("parent"), self.request.user)
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return AccountGroupWriteSerializer
+        return AccountGroupSerializer
 
 
 class AccountViewSet(EntityScopedMasterViewSet):
