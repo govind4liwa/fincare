@@ -246,3 +246,52 @@ database makes drift impossible — rather than doing it wholesale.
 business app to have a policy or appear in an explicit reference-data list with
 a reason. The earlier guard only checked `entity_id`-bearing tables, which is
 why `ledger_journalline` stayed unprotected through five releases.
+
+---
+
+## Amendment — fail-closed context, and the role grant (2026-09-24)
+
+Found while writing the first test to exercise `TenantContextMiddleware` itself
+rather than setting the role by hand in SQL. Until then every RLS test proved
+the *policies* worked; none proved a real request ever reached them.
+
+### "No entities" is not "no context"
+
+`_allowed_entity_ids` returns `[]` for a user with no active memberships, and
+the middleware wrote `",".join([])` — the **empty string** — into the GUC. The
+2026-09-20 amendment had just made the policy treat an empty GUC as "unset,
+therefore unrestricted", to fix the superuser sentinel on pooled connections.
+Together those two correct-looking decisions meant a request with **zero**
+accessible entities bypassed RLS completely: fail-open, in precisely the case
+that should be most closed.
+
+Before that amendment the empty string matched nothing and failed closed, so
+this was introduced by the fix, not by the original design — a good argument for
+testing the enforcement path and not only the policy.
+
+The middleware now writes `rls.NO_ACCESS_SENTINEL`
+(`00000000-…-0`) when the list is empty: a valid UUID, so the
+`entity_id::text = ANY(...)` comparison stays well-typed, and one that can never
+be a real entity id. The unset-means-unrestricted sentinel is unchanged for
+migrations, shell and superusers.
+
+Regression tests cover an anonymous request, an authenticated user with no
+memberships, and a user whose membership has been deactivated — all must see
+zero rows through a deliberately unfiltered query.
+
+### Deployment: the app role must be grantable
+
+`0003_rls` creates `fincare_app` and grants it table privileges, but never
+grants **membership** of it to the login role. `SET LOCAL ROLE fincare_app`
+therefore succeeds today only because the development login role is a
+superuser. On a hardened deployment, where the app connects as a non-superuser
+(which is the point — a superuser bypasses RLS entirely), every request would
+fail with *permission denied to set role* until an operator runs:
+
+```sql
+GRANT fincare_app TO <application_login_role>;
+```
+
+This is deliberately left to deployment rather than baked into a migration: the
+login role's name is environment-specific and is not known to the codebase. It
+is called out in DEVELOPMENT.md alongside the rest of the RLS rollout.

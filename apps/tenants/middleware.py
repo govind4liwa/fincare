@@ -18,7 +18,7 @@ JWT authentication here explicitly.
 from django.conf import settings
 from django.db import connection, transaction
 
-GUC = "app.current_entities"
+from apps.tenants.rls import GUC, NO_ACCESS_SENTINEL
 
 
 def _resolve_user(request):
@@ -67,5 +67,8 @@ class TenantContextMiddleware:
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(f'SET LOCAL ROLE "{role}"')
             if entity_ids is not None:
-                cursor.execute("SELECT set_config(%s, %s, true)", [GUC, ",".join(entity_ids)])
+                # Never write an empty string: that reads as "no context set",
+                # which means unrestricted. No entities must mean no rows.
+                context = ",".join(entity_ids) or NO_ACCESS_SENTINEL
+                cursor.execute("SELECT set_config(%s, %s, true)", [GUC, context])
             return self.get_response(request)
