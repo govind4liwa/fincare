@@ -231,3 +231,35 @@ def test_rounding_residual_booked(entity):
     assert je.status == EntryStatus.POSTED
     assert je.lines.count() == 3
     assert je.total_debit == je.total_credit == Decimal("100.00")
+
+
+def test_line_on_another_entitys_account_is_rejected(entity):
+    """An entry may only post to its own entity's accounts.
+
+    Before this check the engine accepted it: an entity-A entry could carry a
+    line on entity B's bank account. Entity A's trial balance then showed an
+    account not in A's chart, and entity B's reconciliation — which filters by
+    B's entries — never saw the movement. Intercompany work is two entries,
+    each on its own entity's due-from/due-to accounts (CLAUDE.md §5).
+    """
+    other = Entity.objects.create(
+        code="RGL",
+        numeric_code="102",
+        legal_name="Regency Limo LLC",
+        category=entity.category,
+        base_currency=entity.base_currency,
+    )
+    seed_entity_coa(other)
+    foreign_bank = acct(other, "102-100-110-001")
+
+    je = _entry(entity)
+    JournalLine.objects.create(entry=je, line_no=1, account=foreign_bank, debit=Decimal("100"))
+    JournalLine.objects.create(
+        entry=je, line_no=2, account=acct(entity, "101-400-410-001"), credit=Decimal("100")
+    )
+
+    with pytest.raises(PostingError, match="belongs to a different entity"):
+        post_journal_entry(je)
+
+    je.refresh_from_db()
+    assert je.status == EntryStatus.DRAFT, "a rejected entry must not be left posted"
