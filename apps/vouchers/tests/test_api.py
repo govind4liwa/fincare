@@ -86,3 +86,60 @@ def test_vouchers_entity_filter(api, entity):
     res = api.get(f"/api/v1/vouchers/?entity={entity.id}")
     assert res.status_code == 200
     assert str(voucher.id) in {r["id"] for r in res.data["results"]}
+
+
+def test_voucher_cannot_post_to_another_entitys_account(entity, acct):
+    """The API path that proved the bug.
+
+    An accountant for entity A only — no access at all to entity B — created
+    and posted an entity-A voucher whose bank line pointed at entity B's bank
+    account. It returned 201 then 200, and entity A's journal entry carried a
+    500.00 debit on entity B's books.
+    """
+    from django.contrib.auth.models import Group
+
+    from apps.accounts.models import Account
+    from apps.accounts.services.seed import seed_entity_coa
+    from apps.ledger.models import JournalLine
+    from apps.tenants.models import Entity, UserEntityMembership
+
+    other = Entity.objects.create(
+        code="RGL",
+        numeric_code="102",
+        legal_name="Regency Limo LLC",
+        category=entity.category,
+        base_currency=entity.base_currency,
+    )
+    seed_entity_coa(other)
+    foreign_bank = Account.objects.get(entity=other, code="102-100-110-010")
+
+    user = User.objects.create_user(email="acct@a.example", password="pw")
+    UserEntityMembership.objects.create(user=user, entity=entity)
+    user.groups.add(Group.objects.get_or_create(name="accountant")[0])
+    client = APIClient()
+    client.force_authenticate(user)
+
+    created = client.post(
+        "/api/v1/vouchers/",
+        {
+            "entity": str(entity.id),
+            "voucher_type": "receipt",
+            "voucher_date": "2026-06-15",
+            "currency": str(entity.base_currency_id),
+            "lines": [
+                {"account": str(foreign_bank.id), "debit": "500", "credit": "0"},
+                {
+                    "account": str(acct(AR).id),
+                    "debit": "0",
+                    "credit": "500",
+                    "party_type": "customer",
+                    "party_id": str(uuid.uuid4()),
+                },
+            ],
+        },
+        format="json",
+    )
+    posted = client.post(f"/api/v1/vouchers/{created.data['id']}/post/", {}, format="json")
+
+    assert posted.status_code == 400, posted.data
+    assert not JournalLine.objects.filter(account=foreign_bank).exists()
