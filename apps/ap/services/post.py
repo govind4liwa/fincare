@@ -49,6 +49,20 @@ def _vat_account(entity, account_type, label):
     return acct
 
 
+def _assert_own_tax_code(line, document):
+    """A document line may only use its own entity's tax code.
+
+    The rate is read from the code, but the VAT is posted to the document
+    entity's *own* VAT account -- so another entity's code is not caught by the
+    posting engine's account check. It silently applies that entity's rate: an
+    entity-A sale on entity B's zero-rated code posted at 0% instead of 5%.
+    """
+    if line.tax_code_id and line.tax_code.entity_id != document.entity_id:
+        raise APError(
+            f"Tax code {line.tax_code.code} belongs to a different entity than this document."
+        )
+
+
 @transaction.atomic
 def post_bill(bill, *, user=None):
     if bill.status != BillStatus.DRAFT:
@@ -56,6 +70,8 @@ def post_bill(bill, *, user=None):
     lines = list(bill.lines.select_related("account", "tax_code").all())
     if not lines:
         raise APError("Bill has no lines.")
+    for ln in lines:
+        _assert_own_tax_code(ln, bill)
 
     subtotal, tax_total, recoverable_tax = ZERO, ZERO, ZERO
     expense = OrderedDict()  # account -> debit amount
@@ -157,6 +173,8 @@ def post_debit_note(debit_note, *, user=None):
     lines = list(debit_note.lines.select_related("account", "tax_code").all())
     if not lines:
         raise APError("Debit note has no lines.")
+    for ln in lines:
+        _assert_own_tax_code(ln, debit_note)
 
     subtotal, tax_total = ZERO, ZERO
     expense = OrderedDict()  # account -> credit amount

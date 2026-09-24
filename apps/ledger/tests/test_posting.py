@@ -263,3 +263,48 @@ def test_line_on_another_entitys_account_is_rejected(entity):
 
     je.refresh_from_db()
     assert je.status == EntryStatus.DRAFT, "a rejected entry must not be left posted"
+
+
+@pytest.mark.parametrize("ref", ["cost_center", "tax_code"])
+def test_line_cannot_reference_another_entitys_master_data(entity, ref):
+    """Vouchers set cost centre and tax code directly on journal lines, and go
+    straight to the engine — so the engine checks them, not only the account.
+    A cross-entity cost centre would misattribute the line in cost-centre
+    analysis; a cross-entity tax code is simply the wrong entity's master data."""
+    from apps.accounts.models import TaxCode
+    from apps.tenants.models import CostCenter
+
+    other = Entity.objects.create(
+        code="RGL",
+        numeric_code="102",
+        legal_name="Regency Limo LLC",
+        category=entity.category,
+        base_currency=entity.base_currency,
+    )
+    foreign = (
+        CostCenter.objects.create(entity=other, code="CC-B", name="Other entity's CC")
+        if ref == "cost_center"
+        else TaxCode.objects.create(
+            entity=other,
+            code="SR",
+            name="Standard",
+            rate=Decimal("5.000"),
+            treatment=TaxCode.Treatment.STANDARD,
+            direction=TaxCode.Direction.OUTPUT,
+        )
+    )
+
+    je = _entry(entity)
+    JournalLine.objects.create(
+        entry=je,
+        line_no=1,
+        account=acct(entity, "101-100-110-001"),
+        debit=Decimal("100"),
+        **{ref: foreign},
+    )
+    JournalLine.objects.create(
+        entry=je, line_no=2, account=acct(entity, "101-400-410-001"), credit=Decimal("100")
+    )
+
+    with pytest.raises(PostingError, match="belongs to a different entity"):
+        post_journal_entry(je)

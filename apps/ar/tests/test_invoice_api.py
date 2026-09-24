@@ -133,3 +133,49 @@ def test_draft_invoice_can_still_be_deleted(entity, customer, sr_tax, revenue_ac
     res = client.delete(f"/api/v1/invoices/{invoice_id}/")
     assert res.status_code == 204, res.content
     assert not SalesInvoice.objects.filter(id=invoice_id).exists()
+
+
+def _other_entity_zero_rated(entity):
+    from apps.accounts.models import TaxCode
+    from apps.accounts.services.seed import seed_entity_coa
+    from apps.tenants.models import Entity
+
+    other = Entity.objects.create(
+        code="RGL",
+        numeric_code="102",
+        legal_name="Regency Limo LLC",
+        category=entity.category,
+        base_currency=entity.base_currency,
+    )
+    seed_entity_coa(other)
+    return TaxCode.objects.create(
+        entity=other,
+        code="ZR",
+        name="Zero rated",
+        rate=Decimal("0.000"),
+        treatment=TaxCode.Treatment.ZERO,
+        direction=TaxCode.Direction.OUTPUT,
+    )
+
+
+def test_invoice_cannot_use_another_entitys_tax_code(entity, customer, sr_tax, revenue_account):
+    """The case that proved the bug.
+
+    An accountant for entity A only posted an entity-A sale on entity B's
+    zero-rated code: it posted at 0%, totalling 1000.00 where a standard-rated
+    sale should be 1050.00, under-declaring AED 50 of output VAT. The posting
+    engine's account check did not catch it, because the VAT still posts to
+    entity A's own VAT account — only the *rate* came from entity B.
+    """
+    foreign_zero = _other_entity_zero_rated(entity)
+    client = _superuser()
+    payload = _payload(entity, customer, revenue_account, sr_tax)
+    payload["lines"][0]["tax_code"] = str(foreign_zero.id)
+    invoice_id = client.post("/api/v1/invoices/", payload, format="json").data["id"]
+
+    res = client.post(f"/api/v1/invoices/{invoice_id}/post/", {}, format="json")
+
+    assert res.status_code == 400, res.content
+    invoice = SalesInvoice.objects.get(id=invoice_id)
+    assert invoice.status == InvoiceStatus.DRAFT
+    assert invoice.journal_entry is None
