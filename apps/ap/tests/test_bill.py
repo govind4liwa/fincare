@@ -126,3 +126,36 @@ def test_unbalanced_protection_via_engine(entity, supplier, expense_account):
         post_bill(bill)
     bill.refresh_from_db()
     assert bill.status == BillStatus.DRAFT
+
+
+def test_bill_cannot_use_another_entitys_tax_code(entity, supplier, expense_account):
+    """Mirror of the AR case: the rate would come from the other entity's code
+    while the VAT posts to this entity's own account, so the engine can't see it."""
+    from apps.accounts.models import TaxCode
+    from apps.accounts.services.seed import seed_entity_coa
+    from apps.ap.services.post import APError, post_bill
+    from apps.tenants.models import Entity
+
+    other = Entity.objects.create(
+        code="RGL",
+        numeric_code="102",
+        legal_name="Regency Limo LLC",
+        category=entity.category,
+        base_currency=entity.base_currency,
+    )
+    seed_entity_coa(other)
+    foreign = TaxCode.objects.create(
+        entity=other,
+        code="ZR",
+        name="Zero rated",
+        rate=Decimal("0.000"),
+        treatment=TaxCode.Treatment.ZERO,
+        direction=TaxCode.Direction.INPUT,
+    )
+    bill = _bill(entity, supplier, entity.base_currency)
+    _line(bill, expense_account, "1000", tax_code=foreign)
+
+    with pytest.raises(APError, match="belongs to a different entity"):
+        post_bill(bill)
+    bill.refresh_from_db()
+    assert bill.status == BillStatus.DRAFT

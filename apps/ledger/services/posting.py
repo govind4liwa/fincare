@@ -65,6 +65,15 @@ def _validate_lines(entry, lines):
                 f"Line {ln.line_no}: account {account.code} belongs to a different entity "
                 "than this journal entry."
             )
+        # The same rule for the line's other entity-scoped references. Both are
+        # always entity-specific (non-nullable entity), and a voucher lets the
+        # user set them directly on a line.
+        for label, ref in (("cost centre", ln.cost_center), ("tax code", ln.tax_code)):
+            if ref is not None and ref.entity_id != entry.entity_id:
+                raise PostingError(
+                    f"Line {ln.line_no}: {label} {ref.code} belongs to a different entity "
+                    "than this journal entry."
+                )
         if not (account.is_postable and account.is_active):
             raise PostingError(f"Account {account.code} is not postable/active.")
         if entry.source_type == "manual" and not account.allow_manual_posting:
@@ -109,7 +118,7 @@ def post_journal_entry(entry, *, user=None, rounding_account=None, tolerance=ZER
     if entry.status not in {EntryStatus.DRAFT, EntryStatus.VALIDATED}:
         raise PostingError(f"Cannot post an entry in status {entry.status!r}.")
 
-    lines = list(entry.lines.select_related("account").all())
+    lines = list(entry.lines.select_related("account", "cost_center", "tax_code").all())
     _validate_lines(entry, lines)
 
     for ln in lines:
