@@ -71,6 +71,8 @@ class PettyCashFloat(BaseModel):
 class Replenishment(BaseModel):
     """Top up a petty-cash float from a bank account. DR Petty Cash / CR Bank."""
 
+    DELETE_PROTECTED_STATUSES = ("posted", "reversed", "cancelled")
+
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="replenishments"
     )
@@ -105,6 +107,8 @@ class CashCount(BaseModel):
     counted − expected. Shortage (negative) posts DR short/over, CR cash;
     overage (positive) posts DR cash, CR short/over.
     """
+
+    DELETE_PROTECTED_STATUSES = ("posted", "reversed", "cancelled")
 
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="cash_counts"

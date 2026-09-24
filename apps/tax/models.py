@@ -75,6 +75,8 @@ class TaxReturn(BaseModel):
     from the GL VAT control accounts across all member entities.
     """
 
+    DELETE_PROTECTED_STATUSES = ("filed", "paid")
+
     vat_group = models.ForeignKey(
         "tenants.VatGroup",
         on_delete=models.PROTECT,
@@ -175,6 +177,8 @@ class CorporateTaxReturn(BaseModel):
     income. The 0% threshold and the standard rate are stored on the row
     (config-driven) so the engine never hardcodes statutory values.
     """
+
+    DELETE_PROTECTED_STATUSES = ("filed", "paid")
 
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="corporate_tax_returns"

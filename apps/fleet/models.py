@@ -185,6 +185,8 @@ class LoanSchedule(BaseModel):
     supersedes the previous one; posted installments are never rewritten.
     """
 
+    DELETE_PROTECTED_STATUSES = ("approved", "superseded")
+
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
         APPROVED = "approved", "Approved"
@@ -233,6 +235,8 @@ class VehicleLoanInstallment(BaseModel):
     regenerating a schedule must never rewrite it.
     """
 
+    DELETE_PROTECTED_STATUSES = ("posted", "reversed", "cancelled")
+
     loan = models.ForeignKey(VehicleLoan, on_delete=models.CASCADE, related_name="installments")
     schedule = models.ForeignKey(
         LoanSchedule, on_delete=models.CASCADE, null=True, blank=True, related_name="installments"
@@ -271,6 +275,8 @@ class VehicleLoanInstallment(BaseModel):
 
 class DepreciationRun(BaseModel):
     """A periodic depreciation run; one JE with a line pair per vehicle."""
+
+    DELETE_PROTECTED_STATUSES = ("posted", "reversed", "cancelled")
 
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="depreciation_runs"

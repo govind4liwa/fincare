@@ -51,6 +51,8 @@ class Customer(BaseModel):
 
 
 class SalesInvoice(BaseModel):
+
+    DELETE_PROTECTED_STATUSES = ("posted", "partially_paid", "paid", "cancelled")
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="sales_invoices"
     )
@@ -123,6 +125,8 @@ class SalesInvoiceLine(BaseModel):
 
 
 class CreditNote(BaseModel):
+
+    DELETE_PROTECTED_STATUSES = ("posted", "partially_paid", "paid", "cancelled")
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="credit_notes"
     )

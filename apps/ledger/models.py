@@ -23,6 +23,9 @@ class EntryStatus(models.TextChoices):
 
 
 class AccountingPeriod(BaseModel):
+
+    DELETE_PROTECTED_STATUSES = ("closed", "locked")
+
     class Status(models.TextChoices):
         OPEN = "open", "Open"
         CLOSED = "closed", "Closed"
@@ -58,6 +61,9 @@ class AccountingPeriod(BaseModel):
 
 
 class JournalEntry(BaseModel):
+
+    DELETE_PROTECTED_STATUSES = ("posted", "reversed", "cancelled")
+
     class Basis(models.TextChoices):
         ACCRUAL = "accrual", "Accrual"
         CASH = "cash", "Cash"

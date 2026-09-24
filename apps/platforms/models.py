@@ -67,6 +67,8 @@ class PlatformSettlement(BaseModel):
         CR/DR Adjustment account         = net_received − clearing  (signed)
     """
 
+    DELETE_PROTECTED_STATUSES = ("reconciled", "posted", "reversed")
+
     entity = models.ForeignKey(
         "tenants.Entity", on_delete=models.PROTECT, related_name="platform_settlements"
     )
