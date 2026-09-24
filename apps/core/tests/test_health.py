@@ -49,6 +49,26 @@ def test_readiness_via_api_v1_route(client: APIClient) -> None:
     assert response.status_code == status.HTTP_200_OK
 
 
-def test_openapi_schema_endpoint_available(client: APIClient) -> None:
+def test_openapi_schema_requires_authentication(client: APIClient) -> None:
+    """The schema maps the whole API surface, so it must not be public.
+
+    drf-spectacular serves it AllowAny by default and these routes are not
+    DEBUG-gated, so it was readable anonymously in production until
+    SERVE_PERMISSIONS was set.
+    """
+    for path in ("/api/schema/", "/api/schema/swagger/", "/api/schema/redoc/"):
+        response = client.get(path)
+        assert response.status_code in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        ), f"{path} served to an anonymous client ({response.status_code})"
+
+
+@pytest.mark.django_db
+def test_openapi_schema_available_when_authenticated(client: APIClient) -> None:
+    from django.contrib.auth import get_user_model
+
+    user = get_user_model().objects.create_user(email="dev@example.com", password="pw")
+    client.force_authenticate(user)
     response = client.get("/api/schema/")
     assert response.status_code == status.HTTP_200_OK
