@@ -56,6 +56,10 @@ ignore = [
 "**/tests/**/*.py" = ["S101", "S105", "S106"]
 "**/migrations/*.py" = ["E501", "N806"]
 "**/settings/*.py" = ["S105", "S106"]
+# rls.py emits DDL. Identifiers must be interpolated (DDL cannot bind them as
+# parameters) and every one comes from a module-level constant that the RLS
+# tests assert against the live schema — none is ever request-derived.
+"apps/tenants/rls.py" = ["S608"]
 
 # Mirror [tool.isort] so Ruff's import sorter and isort agree (DJANGO/DRF sections).
 [tool.ruff.lint.isort]

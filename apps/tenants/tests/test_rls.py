@@ -196,3 +196,149 @@ def test_no_entity_bearing_table_is_left_unprotected():
         "these tables have entity_id but no RLS policy — add them to "
         f"rls.TRANSACTIONAL_SCOPED_TABLES with a migration, or to RLS_EXEMPT_TABLES: {unprotected}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Child tables scoped through their parent (0007_rls_child_tables)
+# ---------------------------------------------------------------------------
+
+
+def test_child_rows_are_isolated_through_their_parent():
+    """A child with no entity_id of its own is scoped by its parent's policy."""
+    from apps.fleet.models import Vehicle, VehicleDocument
+
+    e1, e2 = _seed()
+    for entity, code in ((e1, "V1"), (e2, "V2")):
+        vehicle = Vehicle.objects.create(entity=entity, code=code)
+        VehicleDocument.objects.create(vehicle=vehicle, doc_type=VehicleDocument.DocType.INSURANCE)
+
+    assert _count_as_role("fleet_vehicledocument", [e1.id]) == 1
+    assert _count_as_role("fleet_vehicledocument", [e2.id]) == 1
+    assert _count_as_role("fleet_vehicledocument", [e1.id, e2.id]) == 2
+    assert _count_as_role("fleet_vehicledocument", None) == 2
+
+
+def test_journal_lines_are_isolated():
+    """The money. ledger_journalline has no entity_id and held no policy before.
+
+    An unfiltered read of it previously returned every entity's postings.
+    """
+    from apps.accounts.models import Account
+    from apps.accounts.services.seed import seed_entity_coa
+    from apps.core.models import Currency
+    from apps.ledger.models import JournalEntry, JournalLine
+
+    # Both entities must sit in the transport band, since seed_entity_coa
+    # validates the numeric code against the category band.
+    aed = Currency.objects.create(code="AED", name="UAE Dirham", symbol="AED", is_base=True)
+    category = BusinessCategory.objects.create(
+        key="transport", label="Transport", band="1", coa_template_key="transport"
+    )
+    e1, e2 = [
+        Entity.objects.create(
+            code=f"E{n}",
+            numeric_code=numeric_code,
+            legal_name=f"Entity {n}",
+            category=category,
+            base_currency=aed,
+        )
+        for n, numeric_code in ((1, "101"), (2, "102"))
+    ]
+    for entity in (e1, e2):
+        seed_entity_coa(entity)
+        account = Account.objects.filter(entity=entity, is_postable=True).first()
+        entry = JournalEntry.objects.create(
+            entity=entity, entry_date=date(2026, 6, 15), source_type="test"
+        )
+        JournalLine.objects.create(entry=entry, line_no=1, account=account, debit=100)
+
+    assert _count_as_role("ledger_journalline", [e1.id]) == 1
+    assert _count_as_role("ledger_journalline", [e2.id]) == 1
+    assert _count_as_role("ledger_journalline", None) == 2
+
+
+def test_every_child_policy_chain_terminates_at_an_entity_scoped_table():
+    """Following each child's parent must eventually reach an entity-scoped table.
+
+    Covers the grandchildren (payslip line -> payslip -> run, WPS record ->
+    batch -> run) structurally: a child policy only says "my parent is
+    visible", so the chain is correct exactly when it terminates somewhere that
+    is entity-scoped. A mis-specified parent would leave a child permanently
+    invisible or permanently unscoped, and neither is obvious at a glance.
+    """
+    from apps.tenants import rls
+
+    entity_scoped = {t for t, _ in rls.SCOPED_TABLES}
+    child_parent = {t: parent for t, parent, _ in rls.CHILD_SCOPED_TABLES}
+
+    for table in child_parent:
+        seen, cur = [], table
+        while cur in child_parent:
+            assert cur not in seen, f"cycle in parent chain for {table}: {[*seen, cur]}"
+            seen.append(cur)
+            cur = child_parent[cur]
+        assert cur in entity_scoped, (
+            f"{table}'s parent chain ends at {cur}, which is not entity-scoped "
+            f"(chain: {' -> '.join([*seen, cur])})"
+        )
+
+
+# Business apps whose tables must all be reachable by an RLS policy.
+RLS_BUSINESS_APPS = {
+    "accounts",
+    "ap",
+    "ar",
+    "audit",
+    "banking",
+    "bookings",
+    "cashbook",
+    "core",
+    "drivers",
+    "fleet",
+    "integrations",
+    "ledger",
+    "payroll",
+    "platforms",
+    "reports",
+    "settings",
+    "tax",
+    "tenants",
+    "vouchers",
+}
+
+# Tables in those apps that are intentionally not row-scoped, with the reason.
+RLS_UNSCOPED_REFERENCE_TABLES = {
+    "core_currency",  # group-level reference data
+    "core_exchangerate",  # group-level reference data
+    "tenants_businesscategory",  # group-level reference data
+    "tenants_vatgroup",  # spans entities by definition
+    "tenants_intercompanymap",  # spans two entities by definition
+    "tenants_userentitymembership",  # defines the scope; see RLS_EXEMPT_TABLES
+}
+
+
+def test_no_transactional_table_is_left_unprotected():
+    """Every table in a business app has an RLS policy, or is listed as reference.
+
+    Broader than the entity_id-based guard: it also catches a child table (no
+    entity_id of its own) shipping without a parent-scoped policy, which is how
+    ledger_journalline — the table holding the actual postings — went
+    unprotected through five releases.
+    """
+    from django.apps import apps as django_apps
+
+    with_policies = _rls_tables()
+    unprotected = sorted(
+        m._meta.db_table
+        for m in django_apps.get_models()
+        if m._meta.managed
+        and not m._meta.proxy
+        and m._meta.app_label in RLS_BUSINESS_APPS
+        and m._meta.db_table not in with_policies
+        and m._meta.db_table not in RLS_UNSCOPED_REFERENCE_TABLES
+    )
+    assert unprotected == [], (
+        "these tables are in a business app but have no RLS policy — give them an "
+        "entity_id policy, a parent-scoped child policy, or list them in "
+        f"RLS_UNSCOPED_REFERENCE_TABLES with a reason: {unprotected}"
+    )
